@@ -27,6 +27,10 @@ dbt/target/
 dbt/logs/
 dbt/.user.yml
 
+# Claude Code — local only, sauf skills/ qui est de la méthodologie projet
+.claude/*
+!.claude/skills/
+
 # OS
 .DS_Store
 Thumbs.db

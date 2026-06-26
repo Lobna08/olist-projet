@@ -1,0 +1,2 @@
+# Normalise les fins de ligne : Git stocke LF, checkout adapte à l'OS
+* text=auto
