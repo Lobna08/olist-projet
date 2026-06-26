@@ -1,0 +1,32 @@
+# Données — ignorer le contenu, pas les dossiers
+data/raw/**
+!data/raw/.gitkeep
+data/duckdb/**
+!data/duckdb/.gitkeep
+*.duckdb
+*.db
+
+# Artefacts ML sérialisés
+artifacts/**
+!artifacts/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml
+
+# OS
+.DS_Store
+Thumbs.db
