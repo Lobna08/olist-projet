@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: int_order_items
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: int_order_payments
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: int_order_reviews
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+
+  - name: int_geolocation
+    columns:
+      - name: zip_code_prefix
+        data_tests: [unique, not_null]
+
+  - name: int_orders_enriched
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]

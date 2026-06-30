@@ -1,0 +1,9 @@
+olist:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      # chemin relatif au répertoire de travail (racine projet)
+      # commande : dbt --project-dir dbt --profiles-dir dbt run
+      path: "data/duckdb/olist.db"
+      schema: main
