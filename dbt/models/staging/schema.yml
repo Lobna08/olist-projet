@@ -4,7 +4,13 @@ models:
   - name: stg_orders
     columns:
       - name: order_id
-        data_tests: [unique, not_null]
+        data_tests:
+          - unique
+          - not_null
+          # Toute commande delivered doit avoir au moins un item — règle métier forte
+          - relationships:
+              to: ref('int_order_items')
+              field: order_id
       - name: customer_id
         data_tests:
           - relationships:
@@ -27,7 +33,6 @@ models:
         data_tests: [unique, not_null]
 
   - name: stg_order_items
-    # Pas de test relationships order_id → stg_orders :
-    # stg_orders est filtré sur 'delivered' uniquement, mais stg_order_items
-    # contient les articles de toutes les commandes (shipped, canceled…).
-    # Les 2 461 order_id manquants sont du périmètre exclu, pas des orphelins.
+    # Test dans l'autre sens : toute commande delivered doit avoir au moins un item.
+    # (stg_order_items → stg_orders serait un faux positif : stg_orders est filtré
+    #  sur delivered, les items des autres statuts n'ont pas de parent dans cette vue.)
