@@ -20,3 +20,32 @@ models:
     columns:
       - name: geo_key
         data_tests: [unique, not_null]
+
+  - name: fct_orders
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
+      - name: product_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_product')
+              field: product_key
+      - name: date_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_key
+      - name: geo_key
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('dim_geography')
+              field: geo_key
