@@ -95,3 +95,16 @@ Une commande peut avoir plusieurs vendeurs (`order_items` grain = item, pas comm
 2. En feature engineering : taux de retard historique du vendeur calculé en point-in-time et joint à la table de features — sans créer de dimension dédiée.
 
 Cette décision est une limite assumée à mentionner dans le README.
+
+---
+
+## Dette technique en attente — geo_key `UNKNOWN` (à trancher au J5)
+
+265 commandes (0,27 % de la population, cf. commentaire `fct_orders.sql`) ont un `customer_zip_code_prefix` absent de `int_geolocation` → `geo_key = 'UNKNOWN'` (sentinel, pas de FK cassée grâce au `coalesce`). Conséquence directe : pour ces 265 lignes, `dim_geography` n'a pas de coordonnées → **impossible de calculer une distance vendeur→client**, feature prévue au J5 (feature mart).
+
+**Trois options, décision reportée au J5 :**
+1. **Imputation** — centroïde de l'état (`customer_state`) en repli si le zip prefix exact est manquant. Récupère un signal approximatif mais introduit un biais silencieux si non documenté.
+2. **Flag explicite** — `distance_is_imputed` ou équivalent en plus de la distance imputée/NULL, pour que le modèle et le dashboard distinguent signal réel et repli.
+3. **NULL laissé tel quel** — LightGBM gère nativement les NULL (split appris), zéro imputation arbitraire, mais perd le signal distance pour ces 265 lignes.
+
+Ne pas trancher en amont du J5 sans revoir l'impact sur le split temporel (est-ce que les 265 lignes sont concentrées sur une période ou dispersées ?).
