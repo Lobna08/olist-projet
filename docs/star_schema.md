@@ -98,6 +98,7 @@ Cette décision est une limite assumée à mentionner dans le README.
 
 ---
 
+
 ## Dette technique en attente — geo_key `UNKNOWN` (à trancher au J5)
 
 265 commandes (0,27 % de la population, cf. commentaire `fct_orders.sql`) ont un `customer_zip_code_prefix` absent de `int_geolocation` → `geo_key = 'UNKNOWN'` (sentinel, pas de FK cassée grâce au `coalesce`). Conséquence directe : pour ces 265 lignes, `dim_geography` n'a pas de coordonnées → **impossible de calculer une distance vendeur→client**, feature prévue au J5 (feature mart).
