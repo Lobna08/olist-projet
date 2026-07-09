@@ -37,6 +37,15 @@ CUTOFF_DATE = "2018-06-01"
 # le rapport de justification soit régénéré automatiquement à chaque run, jamais figé.
 CANDIDATE_CUTOFFS = ["2018-04-01", "2018-05-01", "2018-06-01", "2018-07-01"]
 
+# Seuil de décision retenu pour la régression logistique (modèle final), tranché par
+# l'utilisateur après revue du tableau seuil/précision/recall du J6 — ce n'est PAS une
+# valeur optimisée en boucle sur le test, c'est un arbitrage métier documenté :
+# raisonnement -> coût de l'action déclenchée par une alerte -> tolérance aux fausses
+# alertes -> seuil. Ici, l'alerte déclenche une action automatique à faible coût (pas
+# d'intervention humaine par commande), donc le recall est priorisé sur la précision :
+# rater un retard coûte plus cher qu'une fausse alerte bruyante mais peu coûteuse.
+DECISION_THRESHOLD = 0.60
+
 CATEGORICAL_COLUMNS = ["dominant_payment_type"]
 
 # Colonnes qui ne doivent jamais être des features : identifiant, date utilisée
@@ -266,6 +275,97 @@ def evaluate_by_month(models: dict, test_df: pd.DataFrame, feature_cols: list[st
     return pd.DataFrame(rows)
 
 
+def threshold_table(model, X_test: pd.DataFrame, y_test: pd.Series, thresholds: list[float]) -> pd.DataFrame:
+    """
+    Précision/recall/% de commandes flaguées pour une grille de seuils de décision sur
+    la régression logistique (modèle final retenu). Le seuil par défaut (0.5) n'a aucune
+    légitimité métier ici : class_weight="balanced" recalibre les probabilités pour
+    compenser le déséquilibre de classes, donc 0.5 ne correspond pas à "50% de chances
+    réelles de retard" mais à un point arbitraire de la distribution. Ce tableau sert à
+    choisir un seuil selon la tolérance métier aux fausses alertes — il n'est PAS parcouru
+    en boucle par le code pour maximiser un score : la sélection finale est un arbitrage
+    humain fait une fois, en dehors de ce script.
+    """
+    y_proba = _predict_proba(model, X_test)
+    n = len(y_test)
+    rows = []
+    for t in thresholds:
+        y_pred = (y_proba >= t).astype(int)
+        n_flagged = int(y_pred.sum())
+        n_true_pos = int(((y_pred == 1) & (y_test == 1)).sum())
+        n_false_pos = int(((y_pred == 1) & (y_test == 0)).sum())
+        rows.append({
+            "seuil": t,
+            "pct_flague": round(100 * n_flagged / n, 2),
+            "n_flague": n_flagged,
+            "precision": round(precision_score(y_test, y_pred, zero_division=0), 4),
+            "recall": round(recall_score(y_test, y_pred, zero_division=0), 4),
+            "retards_captes": n_true_pos,
+            "fausses_alertes": n_false_pos,
+        })
+    return pd.DataFrame(rows)
+
+
+def defensible_thresholds(model, X_test: pd.DataFrame, y_test: pd.Series) -> pd.DataFrame:
+    """
+    Traduit 2 règles métier en seuils concrets, mesurés sur le test (pour rapporter une
+    performance honnête) — PAS optimisés en boucle sur le test (ce serait un tuning
+    caché, cf. règle absolue de l'utilisateur). Chaque règle est un choix de tolérance
+    au risque, pas un score à maximiser :
+
+    - "flaguer les 10% les plus à risque" : contrainte opérationnelle (capacité de
+      traitement manuel fixe), le seuil est le 90e centile des probabilités prédites.
+      ATTENTION : ce centile est calculé ICI sur la distribution du test pour ce rapport.
+      En production, il doit être recalibré sur les données les plus récentes disponibles
+      au moment du déploiement (train ou une fenêtre glissante), jamais sur le test lui-même,
+      sinon le seuil "voit" les données qu'il est censé évaluer.
+    - "précision >= 20%" : contrainte sur le coût des fausses alertes (1 fausse alerte
+      pour au plus 4 vraies), seuil = le plus petit seuil de la grille qui satisfait cette
+      contrainte (plus bas = plus de recall, donc on prend le minimum qui passe la barre).
+    """
+    y_proba = _predict_proba(model, X_test)
+    fine_grid = np.arange(0.01, 1.00, 0.01)
+
+    rows = []
+
+    q90 = float(np.quantile(y_proba, 0.90))
+    y_pred_q90 = (y_proba >= q90).astype(int)
+    rows.append({
+        "regle": "Flaguer les 10% les plus à risque",
+        "seuil": round(q90, 4),
+        "pct_flague": round(100 * y_pred_q90.sum() / len(y_test), 2),
+        "n_flague": int(y_pred_q90.sum()),
+        "precision": round(precision_score(y_test, y_pred_q90, zero_division=0), 4),
+        "recall": round(recall_score(y_test, y_pred_q90, zero_division=0), 4),
+        "retards_captes": int(((y_pred_q90 == 1) & (y_test == 1)).sum()),
+        "fausses_alertes": int(((y_pred_q90 == 1) & (y_test == 0)).sum()),
+    })
+
+    best_t = None
+    for t in fine_grid:
+        y_pred = (y_proba >= t).astype(int)
+        if y_pred.sum() == 0:
+            continue
+        prec = precision_score(y_test, y_pred, zero_division=0)
+        if prec >= 0.20:
+            best_t = t
+            break
+    if best_t is not None:
+        y_pred_prec20 = (y_proba >= best_t).astype(int)
+        rows.append({
+            "regle": "Précision >= 20% (au plus 1 fausse alerte pour 4 vraies)",
+            "seuil": round(float(best_t), 4),
+            "pct_flague": round(100 * y_pred_prec20.sum() / len(y_test), 2),
+            "n_flague": int(y_pred_prec20.sum()),
+            "precision": round(precision_score(y_test, y_pred_prec20, zero_division=0), 4),
+            "recall": round(recall_score(y_test, y_pred_prec20, zero_division=0), 4),
+            "retards_captes": int(((y_pred_prec20 == 1) & (y_test == 1)).sum()),
+            "fausses_alertes": int(((y_pred_prec20 == 1) & (y_test == 0)).sum()),
+        })
+
+    return pd.DataFrame(rows)
+
+
 def monthly_late_rate_table(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """Historique complet du taux de retard mensuel — pièce de justification du cutoff."""
     return con.execute("""
@@ -322,6 +422,9 @@ def write_report(
     overfit_check: pd.DataFrame,
     monthly_late_rate: pd.DataFrame,
     cutoff_comparison: pd.DataFrame,
+    threshold_grid: pd.DataFrame,
+    threshold_business: pd.DataFrame,
+    chosen_threshold_row: pd.DataFrame,
 ) -> None:
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     parts = [
@@ -343,6 +446,29 @@ def write_report(
         _df_to_markdown(monthly_late_rate) + "\n",
         "## Justification du cutoff — comparaison de cutoffs candidats\n",
         _df_to_markdown(cutoff_comparison) + "\n",
+        "## Analyse de seuil de décision (régression logistique, modèle final)\n",
+        "Seuil par défaut de scikit-learn (0.5) : ~66% des commandes de test flaguées, "
+        "précision 7.7%. C'est un choix de seuil non examiné, pas un défaut du modèle — "
+        "d'où cette analyse. Le seuil ci-dessous n'est **pas** optimisé en boucle sur le "
+        "test : ce tableau expose le compromis précision/recall pour un arbitrage métier "
+        "humain, fait une seule fois.\n",
+        _df_to_markdown(threshold_grid) + "\n",
+        "### Seuils défendables proposés\n",
+        _df_to_markdown(threshold_business) + "\n",
+        "### Seuil retenu (décision métier, pas un tuning)\n",
+        f"**Seuil = {DECISION_THRESHOLD}**, tranché par l'utilisateur après revue du tableau ci-dessus.\n\n"
+        "Raisonnement : coût de l'action déclenchée par une alerte → tolérance aux fausses "
+        "alertes → seuil. Ici, l'alerte déclenche une action automatique à faible coût (pas "
+        "d'intervention humaine par commande) : une fausse alerte ne coûte quasiment rien à "
+        "traiter, alors qu'un retard non détecté est une occasion manquée d'agir. Le recall "
+        "est donc priorisé sur la précision.\n\n"
+        f"À ce seuil : {_df_to_markdown(chosen_threshold_row)}\n\n"
+        "**Limite assumée** : la précision (~11%) reste basse à ce seuil comme à tout autre "
+        "seuil raisonnable de la grille — ce n'est pas une conséquence du choix de seuil, "
+        "c'est le plafond du signal disponible dans les features (les causes de retard sont "
+        "en grande partie post-achat : aléas transporteur, dernier kilomètre — non observables "
+        "au moment de la commande). Changer le seuil déplace le curseur précision/recall, il "
+        "ne fait pas monter ce plafond.\n",
     ]
     REPORT_PATH.write_text("\n".join(parts), encoding="utf-8")
 
@@ -378,6 +504,13 @@ def main() -> None:
         monthly_late_rate = monthly_late_rate_table(con)
         cutoff_comparison = cutoff_comparison_table(con, CANDIDATE_CUTOFFS)
 
+        thresholds_grid_values = [round(t, 2) for t in np.arange(0.10, 1.00, 0.05)]
+        threshold_grid = threshold_table(models["Régression logistique"], X_test, y_test, thresholds_grid_values)
+        threshold_business = defensible_thresholds(models["Régression logistique"], X_test, y_test)
+        chosen_threshold_row = threshold_table(
+            models["Régression logistique"], X_test, y_test, [DECISION_THRESHOLD]
+        )
+
         print("\n=== Comparaison des 3 modèles (test agrégé) ===")
         print(results.to_string(index=False))
 
@@ -388,7 +521,18 @@ def main() -> None:
         print("\n=== Ventilation mensuelle du PR-AUC (test) ===")
         print(monthly_results.to_string(index=False))
 
-        write_report(results, matrices, monthly_results, overfit_check, monthly_late_rate, cutoff_comparison)
+        print("\n=== Analyse de seuil (régression logistique) ===")
+        print(threshold_grid.to_string(index=False))
+        print("\n=== Seuils défendables proposés ===")
+        print(threshold_business.to_string(index=False))
+        print(f"\n=== Seuil retenu ({DECISION_THRESHOLD}) ===")
+        print(chosen_threshold_row.to_string(index=False))
+
+        write_report(
+            results, matrices, monthly_results, overfit_check,
+            monthly_late_rate, cutoff_comparison, threshold_grid, threshold_business,
+            chosen_threshold_row,
+        )
         print(f"\nRapport complet écrit dans {REPORT_PATH}")
 
 
