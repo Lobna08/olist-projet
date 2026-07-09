@@ -462,7 +462,7 @@ def write_report(
         "d'intervention humaine par commande) : une fausse alerte ne coûte quasiment rien à "
         "traiter, alors qu'un retard non détecté est une occasion manquée d'agir. Le recall "
         "est donc priorisé sur la précision.\n\n"
-        f"À ce seuil : {_df_to_markdown(chosen_threshold_row)}\n\n"
+        "À ce seuil :\n\n" + _df_to_markdown(chosen_threshold_row) + "\n\n"
         "**Limite assumée** : la précision (~11%) reste basse à ce seuil comme à tout autre "
         "seuil raisonnable de la grille — ce n'est pas une conséquence du choix de seuil, "
         "c'est le plafond du signal disponible dans les features (les causes de retard sont "
