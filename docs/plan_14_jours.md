@@ -18,8 +18,8 @@
 
 ## Bloc 3 — Intégration AI↔BI (J8–J10)
 
-- **J8 — Réinjection des prédictions.** Score de risque + top drivers SHAP → colonnes/dimensions dans DuckDB, filtrables. *Livrable : prédictions dans l'entrepôt.* **[Partie porteuse — cœur de la complémentarité]**
-- **J9 — Dashboard Streamlit.** Risque par région/vendeur, SLA, vue d'ensemble. *Livrable : app locale.*
+- **J8 — Réinjection des prédictions.** Score de risque (régression logistique, modèle de production) + top drivers → colonnes/dimensions dans DuckDB, filtrables. Drivers = décomposition linéaire du score LogReg (`coef × valeur standardisée`), pas SHAP : SHAP a été calculé sur LightGBM (J7), qui n'est pas le modèle de production — afficher un score et une explication issus de deux modèles différents serait incohérent. *Livrable : prédictions dans l'entrepôt.* **[Partie porteuse — cœur de la complémentarité]**
+- **J9 — Dashboard Streamlit.** Risque par région/SLA, vue d'ensemble (pas de filtre par vendeur individuel : `docs/star_schema.md` exclut délibérément une dimension vendeur, décision reconfirmée au J8). *Livrable : app locale.*
 - **J10 — Drill-down + démo.** Segment risqué → pourquoi (SHAP). Déploiement Streamlit Community Cloud (lien démo CV). *Livrable : dashboard intégré + URL publique.*
 
 ## Bloc 4 — Livraison (J11–J14, sanctuarisé)
