@@ -182,6 +182,32 @@ def fit_models(X_train: pd.DataFrame, y_train: pd.Series, feature_cols: list[str
     return {"Dummy (plancher)": dummy, "Régression logistique": logreg, "LightGBM": lgbm}
 
 
+def fit_lgbm_variant(
+    X_train: pd.DataFrame, y_train: pd.Series, feature_cols: list[str], **lgbm_overrides
+) -> Pipeline:
+    """
+    Variante paramétrable du pipeline LightGBM de fit_models, réservée aux expériences
+    de diagnostic du J7 (isoler l'effet d'un retrait de feature ou d'une capacité
+    réduite sur le sur-apprentissage). Réutilise build_preprocessor pour ne jamais
+    dupliquer la logique d'imputation/scaling entre train.py et explain.py — la
+    duplication serait le vrai risque (un correctif appliqué dans un fichier, oublié
+    dans l'autre).
+
+    Les hyperparamètres de base sont ceux retenus en J6 (num_leaves=15, reg_lambda=1.0) ;
+    lgbm_overrides les surcharge ponctuellement. Chaque appel du J7 ne change qu'UN levier
+    à la fois (une feature retirée de feature_cols, OU un hyperparamètre), jamais plusieurs
+    simultanément — sinon un résultat ne serait plus attribuable à une cause précise.
+    """
+    params = dict(class_weight="balanced", random_state=42, verbose=-1, num_leaves=15, reg_lambda=1.0)
+    params.update(lgbm_overrides)
+    pipe = Pipeline([
+        ("prep", build_preprocessor(feature_cols)),
+        ("clf", LGBMClassifier(**params)),
+    ])
+    pipe.fit(X_train[feature_cols], y_train)
+    return pipe
+
+
 def _predict_proba(model, X: pd.DataFrame) -> np.ndarray:
     """Gère le cas Dummy (X factice) de façon transparente pour le code appelant."""
     if isinstance(model, DummyClassifier):
