@@ -16,10 +16,10 @@ Score de risque produit par la régression logistique (modèle de production, se
 | is_in_sample | risk_tier | n_commandes |
 |---|---|---|
 | False | Alerte | 4986 |
-| False | Risque extrême (top 10%) | 1862 |
+| False | Risque extrême (probabilité >= 0.71) | 1862 |
 | False | Sous seuil | 11755 |
 | True | Alerte | 6975 |
-| True | Risque extrême (top 10%) | 3158 |
+| True | Risque extrême (probabilité >= 0.71) | 3158 |
 | True | Sous seuil | 67734 |
 
 Bornes de risk_tier calibrées sur le TEST uniquement (q90 = 0.7082) puis appliquées globalement aux deux sous-populations.

@@ -37,7 +37,21 @@ N_TOP_DRIVERS = 3
 
 RISK_TIER_LOW = "Sous seuil"
 RISK_TIER_ALERT = "Alerte"
-RISK_TIER_EXTREME = "Risque extrême (top 10%)"
+
+
+def risk_tier_extreme_label(q90_threshold: float) -> str:
+    """
+    Le label décrit ce que le tier EST (un seuil de probabilité fixe), pas ce qu'il
+    prétend être ("top 10%"). "Top 10%" n'est vrai que pour le TEST, population sur
+    laquelle q90_threshold a été calibré (defensible_thresholds sur X_test) — pour le
+    train, ce même seuil absolu capture ~4% des commandes, pas 10% (cf.
+    risk_tier_reading_note : class_weight="balanced" calibré sur le déséquilibre du
+    train ne transfère pas le même percentile au test, et inversement). Un seuil
+    opérationnel fixe reste le bon choix pour la production (une commande à 0.80 doit
+    déclencher la même alerte quelle que soit la période) — c'est le NOM qui mentait,
+    pas le seuil.
+    """
+    return f"Risque extrême (probabilité >= {q90_threshold:.2f})"
 
 
 def compute_risk_scores(
@@ -64,7 +78,7 @@ def compute_risk_scores(
     is_in_sample = (df["date_key"] < pd.Timestamp(CUTOFF_DATE)).to_numpy()
     is_flagged = proba >= DECISION_THRESHOLD
     tier = np.where(
-        proba >= q90_threshold, RISK_TIER_EXTREME,
+        proba >= q90_threshold, risk_tier_extreme_label(q90_threshold),
         np.where(proba >= DECISION_THRESHOLD, RISK_TIER_ALERT, RISK_TIER_LOW),
     )
 
