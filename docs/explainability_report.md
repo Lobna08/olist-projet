@@ -1,11 +1,10 @@
-# J7 — Explicabilité SHAP (LightGBM, outil de diagnostic)
+# Explicabilité SHAP (LightGBM, outil de diagnostic)
 
 > Instantané versionné pour la soutenance, généré par `python src/models/explain.py`
-> et copié depuis `artifacts/j7_shap_report.md` (non versionné, régénéré à chaque
-> run). Ce fichier n'est PAS auto-mis-à-jour : si `explain.py` ou `train.py` changent,
-> recopier manuellement la version fraîche ici.
+> et copié depuis `artifacts/explainability_report.md` (non versionné, régénéré à chaque
+> run). Ce fichier n'est PAS auto-mis-à-jour : recopier manuellement la version fraîche ici après un changement du script.
 
-Le modèle final de production est la régression logistique (cf. J6). LightGBM est utilisé ICI uniquement pour lire les interactions non-linéaires entre features via SHAP — une lecture qu'un modèle linéaire ne permet pas.
+Le modèle final de production est la régression logistique (cf. rapport de modélisation). LightGBM est utilisé ICI uniquement pour lire les interactions non-linéaires entre features via SHAP — une lecture qu'un modèle linéaire ne permet pas.
 
 ## Vérification anti-fuite (avant toute lecture des résultats)
 
@@ -154,14 +153,14 @@ Coefficient négatif (-0.19) : plus une commande a de vendeurs distincts, plus s
 
 ## Bloc B — Diagnostic du sur-apprentissage LightGBM : hypothèse seller_late_rate_max
 
-Constat de départ (J6) : LightGBM sur-apprend nettement plus que la régression logistique (ratio PR-AUC train/test **3.23** contre **1.42**). Hypothèse testée : seller_late_rate_max — un taux de retard vendeur lissé mais quasi unique par ligne (70,456/77,867 valeurs distinctes sur le train, soit 90.5%) — permettrait à l'arbre de mémoriser des historiques vendeur individuels plutôt que d'apprendre un signal généralisable.
+Constat de départ (cf. rapport de modélisation) : LightGBM sur-apprend nettement plus que la régression logistique (ratio PR-AUC train/test **3.23** contre **1.42**). Hypothèse testée : seller_late_rate_max — un taux de retard vendeur lissé mais quasi unique par ligne (70,456/77,867 valeurs distinctes sur le train, soit 90.5%) — permettrait à l'arbre de mémoriser des historiques vendeur individuels plutôt que d'apprendre un signal généralisable.
 
 ### Table d'ablation
 
 | variante | pr_auc_train | pr_auc_test | ratio_train_test |
 |---|---|---|---|
-| Référence — Régression logistique (J6) | 0.1599 | 0.1128 | 1.42 |
-| Baseline — LightGBM (J6, toutes features) | 0.2809 | 0.0871 | 3.23 |
+| Référence — Régression logistique | 0.1599 | 0.1128 | 1.42 |
+| Baseline — LightGBM (toutes features) | 0.2809 | 0.0871 | 3.23 |
 | Hypothèse — sans seller_late_rate_max | 0.2633 | 0.0964 | 2.73 |
 | Contrôle — sans delay_est_days (top SHAP) | 0.2475 | 0.053 | 4.67 |
 | Contrôle — sans purchase_month (top SHAP) | 0.2323 | 0.0736 | 3.16 |
@@ -190,7 +189,7 @@ Retirer seller_late_rate_max : ratio 2.73 (test 0.0964), améliore le PR-AUC tes
 
 1. **seller_late_rate_max (target encoding à cardinalité quasi unique) — CONFIRMÉ**, contributeur mesurable et spécifique (~28% de l'écart, validé par groupe de contrôle).
 2. **Capacité intrinsèque de l'ensemble d'arbres (num_leaves, n_estimators) — PLAUSIBLE**, effet mesuré indépendamment et cumulatif avec (1), mais ne ferme pas l'écart restant à lui seul non plus.
-3. **Écart résiduel après (1)+(2) combinés** (2.45 contre 1.42 pour la régression logistique) : cohérent avec la conclusion déjà actée en J6 — LightGBM, même régularisé et même privé de sa feature la plus problématique, généralise structurellement moins bien que la régression logistique sur ce problème à faible signal. Ce test confirme ce choix de modèle de production plutôt qu'il ne le remet en cause.
+3. **Écart résiduel après (1)+(2) combinés** (2.45 contre 1.42 pour la régression logistique) : cohérent avec la conclusion déjà actée en modélisation — LightGBM, même régularisé et même privé de sa feature la plus problématique, généralise structurellement moins bien que la régression logistique sur ce problème à faible signal. Ce test confirme ce choix de modèle de production plutôt qu'il ne le remet en cause.
 
 ## Métrique retenue et pourquoi
 
@@ -200,10 +199,10 @@ Retirer seller_late_rate_max : ratio 2.73 (test 0.0964), améliore le PR-AUC tes
 
 1. **Plafond de signal, pas de seuil.** PR-AUC test ≈ 0.11-0.13 selon le seuil : un signal réel (2x le plancher no-skill) mais modeste. Les causes dominantes de retard sont post-achat (aléas transporteur, dernier kilomètre) et non observables au moment de la commande par construction — c'est une contrainte du problème (anti-fuite), pas un manque d'effort de feature engineering.
 
-2. **Probabilités non calibrées.** `class_weight="balanced"` (LogReg et LightGBM) recalibre les probabilités pour compenser le déséquilibre : la probabilité de sortie n'est PAS une fréquence réelle de retard (ex. le point de base SHAP moyen de LightGBM est ≈40%, très au-dessus du 5.48% réel du test). Les probabilités ne sont fiables qu'en ranking relatif ("plus risqué que"), jamais en lecture absolue ("X% de chances de retard"). Implication directe pour le seuil retenu (0.60, cf. J6) : ce n'est pas "60% de chances de retard", c'est un point de coupure choisi sur la courbe précision/recall.
+2. **Probabilités non calibrées.** `class_weight="balanced"` (LogReg et LightGBM) recalibre les probabilités pour compenser le déséquilibre : la probabilité de sortie n'est PAS une fréquence réelle de retard (ex. le point de base SHAP moyen de LightGBM est ≈40%, très au-dessus du 5.48% réel du test). Les probabilités ne sont fiables qu'en ranking relatif ("plus risqué que"), jamais en lecture absolue ("X% de chances de retard"). Implication directe pour le seuil retenu (0.60, cf. rapport de modélisation) : ce n'est pas "60% de chances de retard", c'est un point de coupure choisi sur la courbe précision/recall.
 
 3. **LightGBM surapprend plus que la régression logistique** (ratio PR-AUC train/test 3.2x contre 1.4x, même après réduction de `num_leaves` et ajout de `reg_lambda`). C'est la raison directe pour laquelle LightGBM n'est pas le modèle de production — il est gardé seulement pour SHAP, où le sur-apprentissage biaise l'échelle des contributions mais pas leur ordre de grandeur relatif.
 
-4. **Un seul split temporel, pas de validation glissante.** Le taux de retard mensuel varie de 1.36% à 21.36% sur la période disponible (cf. J6) : un cutoff unique capture une fenêtre de test possiblement non représentative des mois hors échantillon. Une validation walk-forward (plusieurs cutoffs successifs) donnerait une estimation plus robuste — non faite ici par contrainte de temps.
+4. **Un seul split temporel, pas de validation glissante.** Le taux de retard mensuel varie de 1.36% à 21.36% sur la période disponible (cf. rapport de modélisation) : un cutoff unique capture une fenêtre de test possiblement non représentative des mois hors échantillon. Une validation walk-forward (plusieurs cutoffs successifs) donnerait une estimation plus robuste — non faite ici par contrainte de temps.
 
 5. **Échantillons faibles aux seuils extrêmes.** L'estimation de précision à des seuils élevés (ex. 0.90 : 80 commandes flaguées) est bruitée par un petit dénominateur — un seul faux positif de plus ou de moins change la précision de plusieurs points. Ne pas sur-interpréter les seuils au-delà de ~0.85.

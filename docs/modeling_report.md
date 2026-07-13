@@ -1,9 +1,8 @@
-# J6 — Modélisation : résultats et justification du split
+# Modélisation : résultats et justification du split
 
 > Instantané versionné pour la soutenance, généré par `python src/models/train.py`
-> et copié depuis `artifacts/j6_modeling_report.md` (non versionné, régénéré à chaque
-> run). Ce fichier n'est PAS auto-mis-à-jour : si `train.py` change, recopier
-> manuellement la version fraîche ici.
+> et copié depuis `artifacts/modeling_report.md` (non versionné, régénéré à chaque
+> run). Ce fichier n'est PAS auto-mis-à-jour : recopier manuellement la version fraîche ici après un changement du script.
 
 Cutoff retenu : **2018-06-01** (train = achats avant cette date, test = à partir de cette date).
 

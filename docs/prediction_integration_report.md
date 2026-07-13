@@ -1,11 +1,10 @@
-# J8 — Prédictions dans l'entrepôt (main.order_risk_scores, main.order_risk_drivers)
+# Intégration des prédictions dans l'entrepôt (main.order_risk_scores, main.order_risk_drivers)
 
 > Instantané versionné pour la soutenance, généré par `python src/models/predict.py`
-> et copié depuis `artifacts/j8_prediction_integration_report.md` (non versionné,
-> régénéré à chaque run). Ce fichier n'est PAS auto-mis-à-jour : si `predict.py` change,
-> recopier manuellement la version fraîche ici.
+> et copié depuis `artifacts/prediction_integration_report.md` (non versionné, régénéré à chaque
+> run). Ce fichier n'est PAS auto-mis-à-jour : recopier manuellement la version fraîche ici après un changement du script.
 
-Score de risque produit par la régression logistique (modèle de production, seuil 0.6, cf. J6) et écrit dans DuckDB comme dimension filtrable — pas dans un notebook à côté. Drivers = décomposition linéaire exacte du score LogReg (`coef × valeur standardisée`), pas SHAP : SHAP a été calculé sur LightGBM (J7), qui n'est pas le modèle de production. Afficher un score et une explication issus de deux modèles différents serait incohérent — écart assumé par rapport au texte initial de docs/plan_14_jours.md.
+Score de risque produit par la régression logistique (modèle de production, seuil 0.6, cf. rapport de modélisation) et écrit dans DuckDB comme dimension filtrable — pas dans un notebook à côté. Drivers = décomposition linéaire exacte du score LogReg (`coef × valeur standardisée`), pas SHAP : SHAP a été calculé sur LightGBM (rapport d'explicabilité), qui n'est pas le modèle de production. Afficher un score et une explication issus de deux modèles différents serait incohérent — écart assumé par rapport au texte initial de docs/plan_14_jours.md.
 
 ## Portée : toutes les commandes, avec is_in_sample
 
@@ -24,7 +23,7 @@ Score de risque produit par la régression logistique (modèle de production, se
 
 Bornes de risk_tier calibrées sur le TEST uniquement (q90 = 0.7082) puis appliquées globalement aux deux sous-populations.
 
-**Constat réel (pas une prédiction a priori)** : 13.0% des commandes de train sont en tier Alerte/Extrême, contre 36.8% pour le test — la proportion la plus élevée est du côté test (`is_in_sample=false`), alors que le taux de retard BRUT est plus élevé sur train (8.74%) que sur test (5.48%). Ce n'est PAS le signe que le test est réellement plus risqué : `class_weight="balanced"` est calibré uniquement sur le déséquilibre de train (ratio à l'heure:retard = 10.4:1), pas sur celui de test (ratio = 17.3:1, plus déséquilibré côté test). Le même modèle, appliqué à une population dont le déséquilibre diffère de celui sur lequel il a été calibré, projette des probabilités systématiquement décalées pour cette population — un effet distinct du sur-apprentissage, qui s'ajoute à la limite déjà documentée en J7 (probabilités non calibrées, `class_weight="balanced"`). Ne pas comparer les deux sous-populations comme si elles étaient sur la même échelle de risque réel — c'est tout l'intérêt de garder `is_in_sample` visible plutôt que de mélanger silencieusement les deux.
+**Constat réel (pas une prédiction a priori)** : 13.0% des commandes de train sont en tier Alerte/Extrême, contre 36.8% pour le test — la proportion la plus élevée est du côté test (`is_in_sample=false`), alors que le taux de retard BRUT est plus élevé sur train (8.74%) que sur test (5.48%). Ce n'est PAS le signe que le test est réellement plus risqué : `class_weight="balanced"` est calibré uniquement sur le déséquilibre de train (ratio à l'heure:retard = 10.4:1), pas sur celui de test (ratio = 17.3:1, plus déséquilibré côté test). Le même modèle, appliqué à une population dont le déséquilibre diffère de celui sur lequel il a été calibré, projette des probabilités systématiquement décalées pour cette population — un effet distinct du sur-apprentissage, qui s'ajoute à la limite déjà documentée dans le rapport d'explicabilité (probabilités non calibrées, `class_weight="balanced"`). Ne pas comparer les deux sous-populations comme si elles étaient sur la même échelle de risque réel — c'est tout l'intérêt de garder `is_in_sample` visible plutôt que de mélanger silencieusement les deux.
 
 ## Drivers les plus fréquents en position #1 (top 10)
 
@@ -55,4 +54,4 @@ Requête exécutée : jointure `main.order_risk_scores` → `marts.fct_orders` �
 
 ## Limite assumée
 
-Aucun filtre par vendeur individuel : `docs/star_schema.md` exclut délibérément une dimension vendeur (le grain de commande ≠ grain d'item, une commande peut avoir plusieurs vendeurs). Rouvrir ce point demanderait de résoudre quel vendeur porte le `seller_late_rate_max` de chaque commande — non fait ici, décision reconfirmée avec l'utilisateur au J8. Filtres livrés : région (état client), catégorie produit, période.
+Aucun filtre par vendeur individuel : `docs/star_schema.md` exclut délibérément une dimension vendeur (le grain de commande ≠ grain d'item, une commande peut avoir plusieurs vendeurs). Rouvrir ce point demanderait de résoudre quel vendeur porte le `seller_late_rate_max` de chaque commande — non fait ici, décision reconfirmée avec l'utilisateur à l'intégration des prédictions. Filtres livrés : région (état client), catégorie produit, période.

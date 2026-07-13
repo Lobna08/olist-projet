@@ -1,4 +1,4 @@
-# Python 3.11 — versions épinglées pour reproductibilité J14
+# Python 3.11 — versions épinglées pour reproductibilité
 
 # Data
 pandas==2.2.2

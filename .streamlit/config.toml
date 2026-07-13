@@ -1,7 +1,7 @@
 # Thème clair, sobre, professionnel — palette de référence de la skill dataviz
 # (surface claire, encre foncée, accent bleu). Le thème sombre par défaut de
-# Streamlit n'était pas un choix délibéré du premier jet du dashboard (J9 v1),
-# juste l'absence de config explicite — corrigé ici.
+# Streamlit n'était pas un choix délibéré du premier jet du dashboard, juste
+# l'absence de config explicite — corrigé ici.
 [theme]
 base = "light"
 primaryColor = "#2a78d6"

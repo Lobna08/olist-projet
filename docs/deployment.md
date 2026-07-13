@@ -1,4 +1,4 @@
-# Déploiement du dashboard (J10)
+# Déploiement du dashboard
 
 ## Deux modes, un seul code
 
@@ -15,7 +15,8 @@ requête SQL ne change entre les deux modes.
 
 Le mode déployé est un **complément** pour obtenir un lien public (démo CV) — il ne
 remplace pas le mode local, qui reste la preuve de l'intégration réelle à l'entrepôt
-DuckDB (star schema + prédictions comme dimension filtrable, cf. J8).
+DuckDB (star schema + prédictions comme dimension filtrable, cf. rapport
+d'intégration des prédictions).
 
 ## Pourquoi Parquet plutôt que d'autres options
 

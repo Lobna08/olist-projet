@@ -1,5 +1,5 @@
 """
-J9 — Dashboard Streamlit pour un public métier : lit le star schema DuckDB EN DIRECT
+Dashboard Streamlit pour un public métier : lit le star schema DuckDB EN DIRECT
 (main.order_risk_scores/order_risk_drivers + marts.* + intermediate.int_orders_enriched
 pour la satisfaction). Lancer depuis la racine du projet : streamlit run app/app.py
 
@@ -11,7 +11,7 @@ Méthodologie, qui documente la rigueur pour qui veut creuser.
 Le drill-down interactif (cliquer une commande -> explorer SES drivers) reste hors
 scope, réservé au jalon suivant.
 
-J10 — Deux modes de données, transitoires selon l'environnement (voir _connect()) :
+Deux modes de données, transitoires selon l'environnement (voir _connect()) :
 - LOCAL (data/duckdb/olist.db présent) : connexion directe au warehouse, vraiment
   live — relancer predict.py met à jour ce que le dashboard affiche immédiatement.
 - DÉPLOYÉ (Streamlit Community Cloud, olist.db absent du clone git — gitignored,
@@ -204,7 +204,7 @@ def is_local_mode() -> bool:
 def _connect() -> duckdb.DuckDBPyConnection:
     """
     Mode LOCAL (DB_PATH présent, dev) : connexion directe au warehouse, comme avant
-    le J10. Mode DÉPLOYÉ (DB_PATH absent — ex. clone Streamlit Cloud, le fichier est
+    le déploiement. Mode DÉPLOYÉ (DB_PATH absent — ex. clone Streamlit Cloud, le fichier est
     gitignored) : connexion :memory: avec des VUES DuckDB pointant sur les exports
     Parquet (data/dashboard_export/, générés par src/models/export_dashboard_data.py),
     sous les mêmes noms schema.table que le warehouse réel. Aucune requête SQL de ce
