@@ -450,11 +450,13 @@ def render_category_analysis(cte, params) -> None:
     with col_worst:
         st.caption("10 catégories les plus à risque")
         worst = included.head(10)
-        _horizontal_bar(worst, "Catégorie", "Taux de retard", ".0%", COLOR_SEQUENTIAL, tooltip)
+        _horizontal_bar(worst, "Catégorie", "Taux de retard", ".1%", COLOR_SEQUENTIAL, tooltip)
     with col_best:
         st.caption("10 catégories les plus fiables")
         best = included.tail(10).sort_values("Taux de retard", ascending=False)
-        _horizontal_bar(best, "Catégorie", "Taux de retard", ".0%", COLOR_SEQUENTIAL, tooltip)
+        # .1% (pas .0%) : les catégories les plus fiables sont souvent sous 5%, où un
+        # arrondi à l'entier écrase toute la variation ("0%, 0%, 1%, 1%" illisible).
+        _horizontal_bar(best, "Catégorie", "Taux de retard", ".1%", COLOR_SEQUENTIAL, tooltip)
 
     if not excluded.empty:
         st.caption(f"{len(excluded)} catégorie(s) exclue(s) (< {MIN_VOLUME} commandes), non affichées.")
@@ -480,14 +482,6 @@ def render_satisfaction_link(cte, params) -> None:
         f"**Une commande en retard obtient en moyenne {retard:.2f}/5, contre "
         f"{a_temps:.2f}/5 pour une commande livrée à l'heure — soit {delta:.2f} "
         f"point(s) de satisfaction en moins.**"
-    )
-    chart_df = pd.DataFrame({
-        "Statut": ["Livrée à l'heure", "Livrée en retard"],
-        "Note": [a_temps, retard],
-    })
-    _horizontal_bar(
-        chart_df, "Statut", "Note", ".1f", COLOR_SEQUENTIAL,
-        ["Statut", alt.Tooltip("Note", format=".2f")],
     )
 
 
@@ -549,10 +543,10 @@ def render_prediction(cte, params) -> None:
         st.info("Aucune commande à risque pour ces filtres.")
         return
     priority["État"] = priority["customer_state"].map(translate_state)
+    priority["Catégorie"] = priority["product_category_name"].map(translate_category)
     priority["Niveau de risque"] = priority["risk_tier"].map(translate_tier)
     priority["Facteur principal"] = priority["top_driver"].map(translate_feature)
     display = priority.rename(columns={
-        "product_category_name": "Catégorie",
         "total_price": "Montant (R$)",
         "risk_probability": "Score de risque",
     })[["État", "Catégorie", "Montant (R$)", "Niveau de risque", "Score de risque", "Facteur principal"]]
