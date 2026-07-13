@@ -1,8 +1,7 @@
 """
 J9 — Dashboard Streamlit pour un public métier : lit le star schema DuckDB EN DIRECT
 (main.order_risk_scores/order_risk_drivers + marts.* + intermediate.int_orders_enriched
-pour la satisfaction), aucune donnée figée. Lancer depuis la racine du projet :
-streamlit run app/app.py
+pour la satisfaction). Lancer depuis la racine du projet : streamlit run app/app.py
 
 Principe directeur : un décideur métier doit tout comprendre sans connaissance
 technique. Le vocabulaire d'ingénierie (risk_tier, is_in_sample, noms de features
@@ -11,7 +10,21 @@ Méthodologie, qui documente la rigueur pour qui veut creuser.
 
 Le drill-down interactif (cliquer une commande -> explorer SES drivers) reste hors
 scope, réservé au jalon suivant.
+
+J10 — Deux modes de données, transitoires selon l'environnement (voir _connect()) :
+- LOCAL (data/duckdb/olist.db présent) : connexion directe au warehouse, vraiment
+  live — relancer predict.py met à jour ce que le dashboard affiche immédiatement.
+- DÉPLOYÉ (Streamlit Community Cloud, olist.db absent du clone git — gitignored,
+  93 Mo) : lit des instantanés Parquet versionnés dans data/dashboard_export/
+  (générés par src/models/export_dashboard_data.py). FIGÉ à la date de l'export, pas
+  mis à jour tant que quelqu'un ne relance pas l'export et ne pousse pas le résultat.
+  Un bandeau à l'écran le rappelle (cf. render_mode_banner) — jamais présenté comme
+  live à un visiteur du lien public. Voir docs/deployment.md pour le cycle complet.
+
+Les deux modes exécutent EXACTEMENT le même SQL (aucune requête de ce fichier n'a
+besoin de savoir dans quel mode elle tourne) — seule la connexion change.
 """
+from datetime import datetime
 from pathlib import Path
 
 import altair as alt
@@ -21,6 +34,7 @@ import streamlit as st
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = PROJECT_ROOT / "data" / "duckdb" / "olist.db"
+EXPORT_DIR = PROJECT_ROOT / "data" / "dashboard_export"
 
 # Un seul bleu séquentiel pour les onglets BI (région, catégorie, évolution
 # mensuelle) : ce sont des classements de MAGNITUDE, pas des états, donc pas la
@@ -183,15 +197,57 @@ def translate_category(raw: str) -> str:
     return CATEGORY_LABELS.get(raw, raw.replace("_", " ").capitalize())
 
 
+def is_local_mode() -> bool:
+    return DB_PATH.exists()
+
+
+def _connect() -> duckdb.DuckDBPyConnection:
+    """
+    Mode LOCAL (DB_PATH présent, dev) : connexion directe au warehouse, comme avant
+    le J10. Mode DÉPLOYÉ (DB_PATH absent — ex. clone Streamlit Cloud, le fichier est
+    gitignored) : connexion :memory: avec des VUES DuckDB pointant sur les exports
+    Parquet (data/dashboard_export/, générés par src/models/export_dashboard_data.py),
+    sous les mêmes noms schema.table que le warehouse réel. Aucune requête SQL de ce
+    fichier n'a besoin de savoir dans quel mode elle tourne.
+
+    Piège vérifié en testant (pas supposé) : DuckDB crée le schéma 'main' par défaut
+    sur toute connexion — `CREATE SCHEMA main` lève une CatalogException. Seuls
+    marts/intermediate sont créés explicitement ci-dessous.
+    """
+    if is_local_mode():
+        return duckdb.connect(str(DB_PATH), read_only=True)
+
+    con = duckdb.connect(":memory:")
+    con.execute("create schema if not exists marts")
+    con.execute("create schema if not exists intermediate")
+
+    def _view(qualified_name: str, file_stem: str, select: str = "*") -> None:
+        path = (EXPORT_DIR / f"{file_stem}.parquet").as_posix()
+        con.execute(f"create view {qualified_name} as select {select} from read_parquet('{path}')")
+
+    _view("marts.fct_orders", "fct_orders")
+    _view("marts.dim_customer", "dim_customer")
+    _view("marts.dim_product", "dim_product")
+    _view("marts.dim_date", "dim_date")
+    _view("intermediate.int_orders_enriched", "int_orders_enriched")
+    _view("main.order_risk_scores", "order_risk_scores")
+    # driver_rank n'est pas dans le Parquet (toujours 1, cf. export_dashboard_data.py)
+    # — resynthétisé ici pour garder `where dr.driver_rank = 1` valide dans les deux
+    # modes, sans dupliquer une colonne constante dans le fichier exporté.
+    _view("main.order_risk_drivers", "order_risk_drivers", select="*, 1 as driver_rank")
+    return con
+
+
 def run_query(sql: str, params: list | None = None) -> pd.DataFrame:
     """
-    Connexion DuckDB COURTE (ouverte/exécutée/fermée à chaque appel), jamais tenue
-    pour la durée de vie de l'app — DuckDB exige qu'aucune connexion, même read_only,
-    ne reste ouverte pour qu'un autre processus (predict.py, dbt run) puisse écrire.
-    Vérifié empiriquement lors du premier jet de ce dashboard : une connexion tenue
-    ouverte via st.cache_resource bloquait predict.py avec une IOException.
+    Connexion COURTE (ouverte/exécutée/fermée à chaque appel), jamais tenue pour la
+    durée de vie de l'app. En mode local, DuckDB exige qu'aucune connexion, même
+    read_only, ne reste ouverte pour qu'un autre processus (predict.py, dbt run)
+    puisse écrire — vérifié empiriquement (une connexion tenue via st.cache_resource
+    bloquait predict.py avec une IOException). En mode Parquet il n'y a pas de
+    contrainte de verrou, mais la même fonction sert les deux cas sans bifurcation.
     """
-    with duckdb.connect(str(DB_PATH), read_only=True) as con:
+    with _connect() as con:
         if params:
             return con.execute(sql, params).df()
         return con.execute(sql).df()
@@ -557,13 +613,46 @@ def render_prediction(cte, params) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Mode (local live / démo figée)
+# ---------------------------------------------------------------------------
+
+def render_mode_banner() -> None:
+    """
+    Visible uniquement en mode démo (Streamlit Cloud) — jamais en local, où l'app
+    est déjà live par construction. Un visiteur du lien public ne doit jamais croire
+    qu'il interroge un entrepôt qui évolue en direct : ce n'est pas le cas, cf.
+    docs/deployment.md pour le cycle de rafraîchissement (manuel, pas automatique).
+    """
+    if is_local_mode():
+        return
+    export_date = "date inconnue"
+    sample_file = EXPORT_DIR / "fct_orders.parquet"
+    if sample_file.exists():
+        export_date = datetime.fromtimestamp(sample_file.stat().st_mtime).strftime("%d/%m/%Y")
+    st.info(
+        f"Démonstration publique — données figées au {export_date} (instantané, pas "
+        "une connexion en direct à l'entrepôt). Détails dans la section Méthodologie "
+        "en bas de page."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Méthodologie
 # ---------------------------------------------------------------------------
 
 def render_methodology() -> None:
+    mode_note = (
+        "Cette instance lit directement l'entrepôt DuckDB local, en direct."
+        if is_local_mode() else
+        "Cette instance est une démonstration publique : elle lit un instantané "
+        "Parquet figé, pas l'entrepôt DuckDB en direct (celui-ci n'est pas publié "
+        "sur le dépôt public, il est volumineux et régénéré localement). Le "
+        "rafraîchissement n'est pas automatique — voir `docs/deployment.md`."
+    )
     with st.expander("Méthodologie (pour aller plus loin)", expanded=False):
         st.markdown(
             f"""
+- **Source des données de cette instance** : {mode_note}
 - **Onglets "Vue d'ensemble" et "Analyse"** : calculés sur l'historique complet des
   commandes livrées (2 ans). Les régions et catégories avec moins de
   {MIN_VOLUME} commandes sont exclues des classements — sur un petit nombre de
@@ -593,6 +682,7 @@ def main() -> None:
         "Vue d'ensemble et analyse de l'activité de livraison, avec anticipation des "
         "commandes à risque."
     )
+    render_mode_banner()
 
     with st.sidebar:
         st.header("Filtres")

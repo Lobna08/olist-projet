@@ -1,0 +1,12 @@
+# Dépendances du DEPLOIEMENT du dashboard (Streamlit Community Cloud) uniquement.
+# Un fichier requirements.txt dans le même dossier que le fichier d'entrée
+# (app/app.py) est prioritaire sur celui de la racine du dépôt — vérifié dans la
+# doc officielle Streamlit avant de s'appuyer dessus. Le requirements.txt racine
+# embarque tout le pipeline (dbt, lightgbm, shap, jupyter...) : inutile et plus
+# lent/fragile à construire pour le seul dashboard, qui n'a besoin que de ces 4
+# paquets. Versions alignées sur requirements.txt racine + altair (dépendance de
+# streamlit, épinglée ici explicitement pour la même raison de reproductibilité).
+streamlit==1.39.0
+duckdb==1.1.3
+pandas==2.2.2
+altair==5.5.0
