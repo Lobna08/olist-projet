@@ -15,7 +15,7 @@ typed as (
     from source
 ),
 
--- 🔑 Décision J3-2 : exclure price <= 0 OU freight_value < 0 (erreurs saisie)
+-- Décision : exclure price <= 0 OU freight_value < 0 (erreurs saisie)
 -- freight_value = 0 conservé (livraison gratuite légitime)
 -- Exclusions chiffrées : 0 ligne sur 112 650 (0.000 %) — dataset propre
 cleaned as (

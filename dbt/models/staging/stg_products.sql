@@ -2,7 +2,7 @@ with source as (
     select * from {{ source('raw', 'products') }}
 ),
 
--- 🔑 Décision J3 : fallback 'unknown' pour catégories sans traduction ou NULL
+-- Décision : fallback 'unknown' pour catégories sans traduction ou NULL
 -- Dimensions numériques manquantes (2 lignes) : conservées NULL → imputation médiane au feature engineering
 translated as (
     select

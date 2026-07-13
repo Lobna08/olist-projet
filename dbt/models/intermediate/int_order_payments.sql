@@ -6,13 +6,13 @@ aggregated as (
     select
         order_id,
         sum(payment_value)        as total_payment,
-        -- 🔑 Décision J3-3 : MAX = durée de financement la plus longue sur la commande
+        -- Décision : MAX = durée de financement la plus longue sur la commande
         max(payment_installments) as nb_payment_installments
     from stg
     group by order_id
 ),
 
--- 🔑 Décision J3-4 : type dominant = celui représentant le montant le plus élevé
+-- Décision : type dominant = celui représentant le montant le plus élevé
 -- Tie-breaker alphabétique sur payment_type pour la reproductibilité
 dominant as (
     select

@@ -3,7 +3,7 @@ with stg as (
     select * from {{ ref('stg_order_reviews') }}
 ),
 
--- 🔑 Décision J3-5 : garder la review la plus récente par commande
+-- Décision : garder la review la plus récente par commande
 -- Tie-breaker : review_id ASC (déterministe) si review_creation_date identique
 deduped as (
     select

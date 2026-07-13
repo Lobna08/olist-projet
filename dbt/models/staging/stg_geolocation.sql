@@ -1,4 +1,4 @@
--- 🔑 Décision J3-6 : bornes physiques Brésil lat[-34, +6] / lng[-74, -28]
+-- Décision : bornes physiques Brésil lat[-34, +6] / lng[-74, -28]
 -- Exclusions chiffrées : 31 points sur 1 000 163 (0.003 %) hors bornes
 with source as (
     select * from {{ source('raw', 'geolocation') }}

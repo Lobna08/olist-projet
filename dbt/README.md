@@ -46,25 +46,25 @@ tels quels            grain = source             commande + jointures
 
 ## Décisions clés
 
-**🔑 1 — Incohérences temporelles (`stg_orders`)**
+**1 — Incohérences temporelles (`stg_orders`)**
 EDA (2026-06-30) : 0 incohérence trouvée sur les commandes delivered. Le contrôle est posé en colonne `has_temporal_inconsistency` pour reproductibilité, rien n'est exclu.
 
-**🔑 2 — Aberrations prix/fret (`stg_order_items`)**
+**2 — Aberrations prix/fret (`stg_order_items`)**
 Exclus : `price <= 0` ou `freight_value < 0`. Conservé : `freight_value = 0` (livraison gratuite légitime). Volume exclu : 0 ligne sur 112 650 — dataset propre.
 
-**🔑 3 — `nb_payment_installments` (`int_order_payments`)**
+**3 — `nb_payment_installments` (`int_order_payments`)**
 `MAX(payment_installments)` = durée de financement la plus longue sur la commande. `SUM` serait absurde (additionner des durées de plans différents).
 
-**🔑 4 — `dominant_payment_type` (`int_order_payments`)**
+**4 — `dominant_payment_type` (`int_order_payments`)**
 Type représentant le montant le plus élevé (par valeur, pas par count). Tie-breaker alphabétique pour la reproductibilité.
 
-**🔑 5 — Déduplication reviews (`int_order_reviews`)**
+**5 — Déduplication reviews (`int_order_reviews`)**
 Garder la review la plus récente (`review_creation_date DESC`). Tie-breaker : `review_id ASC` (déterministe si même date).
 
-**🔑 6 — Bornes géolocalisation (`stg_geolocation`)**
+**6 — Bornes géolocalisation (`stg_geolocation`)**
 Filtrage : latitude ∈ [-34, +6], longitude ∈ [-74, -28]. Points hors bornes exclus : 31 sur 1 000 163 (0.003 %). Centroïde calculé dans `int_geolocation` (moyenne lat/lng par préfixe).
 
-**🔑 7 — Test FK `stg_order_items → stg_orders`**
+**7 — Test FK `stg_order_items → stg_orders`**
 Ce test serait un faux positif structurel : `stg_orders` filtre sur `delivered`, mais `stg_order_items` couvre tous les statuts. Les 2 461 "orphelins" sont les items des commandes non-delivered — comportement attendu, pas une erreur de données. Remplacé par le test inverse : `stg_orders.order_id → int_order_items.order_id` ("toute commande delivered a au moins un item").
 
 ---

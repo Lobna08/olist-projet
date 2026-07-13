@@ -27,7 +27,7 @@ typed as (
         cast(order_delivered_carrier_date  as timestamp) as order_delivered_carrier_date,
         cast(order_delivered_customer_date as timestamp) as order_delivered_customer_date,
 
-        -- 🔑 Décision J3-1 : 0 incohérence trouvée en EDA → flag documenté, rien exclu
+        -- Décision : 0 incohérence trouvée en EDA → flag documenté, rien exclu
         (
             cast(order_delivered_customer_date as timestamp)
                 < cast(order_purchase_timestamp as timestamp)
