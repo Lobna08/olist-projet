@@ -14,6 +14,7 @@ scope, réservé au jalon suivant.
 """
 from pathlib import Path
 
+import altair as alt
 import duckdb
 import pandas as pd
 import streamlit as st
@@ -76,6 +77,87 @@ BR_STATE_NAMES = {
     "TO": "Tocantins",
 }
 
+# Les 69 catégories du dataset (liste vérifiée par requête, pas devinée), traduites
+# en français plutôt que juste nettoyées (underscore -> espace) : l'anglais brut
+# ("fashion_underwear_beach") reste illisible pour un décideur même une fois
+# capitalisé. Quelques clés portent les coquilles d'origine du fichier de traduction
+# Olist ("fashio_female_clothing", "costruction_tools_*", "home_confort") — la clé
+# doit matcher exactement la valeur en base, la traduction corrige le sens, pas la clé.
+CATEGORY_LABELS = {
+    "agro_industry_and_commerce": "Agro-industrie et commerce",
+    "air_conditioning": "Climatisation",
+    "art": "Art",
+    "arts_and_craftmanship": "Artisanat d'art",
+    "audio": "Audio",
+    "auto": "Automobile",
+    "baby": "Bébé",
+    "bed_bath_table": "Linge de maison",
+    "books_general_interest": "Livres généraux",
+    "books_imported": "Livres importés",
+    "books_technical": "Livres techniques",
+    "cds_dvds_musicals": "CD, DVD et musique",
+    "christmas_supplies": "Articles de Noël",
+    "cine_photo": "Cinéma et photo",
+    "computers": "Ordinateurs",
+    "computers_accessories": "Accessoires informatiques",
+    "consoles_games": "Consoles et jeux vidéo",
+    "construction_tools_construction": "Outillage de construction",
+    "construction_tools_lights": "Éclairage de chantier",
+    "construction_tools_safety": "Équipement de sécurité chantier",
+    "cool_stuff": "Objets tendance",
+    "costruction_tools_garden": "Outillage de jardin",
+    "costruction_tools_tools": "Outils de bricolage",
+    "diapers_and_hygiene": "Couches et hygiène",
+    "drinks": "Boissons",
+    "dvds_blu_ray": "DVD et Blu-ray",
+    "electronics": "Électronique",
+    "fashio_female_clothing": "Mode féminine",
+    "fashion_bags_accessories": "Sacs et accessoires de mode",
+    "fashion_childrens_clothes": "Mode enfant",
+    "fashion_male_clothing": "Mode masculine",
+    "fashion_shoes": "Chaussures",
+    "fashion_sport": "Mode sport",
+    "fashion_underwear_beach": "Sous-vêtements et maillots de bain",
+    "fixed_telephony": "Téléphonie fixe",
+    "flowers": "Fleurs",
+    "food": "Alimentation",
+    "food_drink": "Alimentation et boissons",
+    "furniture_bedroom": "Mobilier chambre",
+    "furniture_decor": "Meubles et décoration",
+    "furniture_living_room": "Mobilier salon",
+    "furniture_mattress_and_upholstery": "Matelas et literie",
+    "garden_tools": "Outils de jardin",
+    "health_beauty": "Santé et beauté",
+    "home_appliances": "Électroménager",
+    "home_appliances_2": "Électroménager (autre)",
+    "home_comfort_2": "Confort de la maison (autre)",
+    "home_confort": "Confort de la maison",
+    "home_construction": "Rénovation et construction",
+    "housewares": "Articles ménagers",
+    "industry_commerce_and_business": "Industrie, commerce et entreprises",
+    "kitchen_dining_laundry_garden_furniture": "Cuisine, salle à manger et jardin",
+    "la_cuisine": "Cuisine",
+    "luggage_accessories": "Bagagerie",
+    "market_place": "Marketplace",
+    "music": "Musique",
+    "musical_instruments": "Instruments de musique",
+    "office_furniture": "Mobilier de bureau",
+    "party_supplies": "Articles de fête",
+    "perfumery": "Parfumerie",
+    "pet_shop": "Animalerie",
+    "security_and_services": "Sécurité et services",
+    "signaling_and_security": "Signalisation et sécurité",
+    "small_appliances": "Petit électroménager",
+    "small_appliances_home_oven_and_coffee": "Petit électroménager cuisine",
+    "sports_leisure": "Sport et loisirs",
+    "stationery": "Papeterie",
+    "tablets_printing_image": "Tablettes et impression",
+    "telephony": "Téléphonie",
+    "toys": "Jouets",
+    "unknown": "Catégorie inconnue",
+    "watches_gifts": "Montres et cadeaux",
+}
+
 st.set_page_config(page_title="Olist — Pilotage risque livraison", layout="wide")
 
 
@@ -95,6 +177,10 @@ def translate_feature(raw: str) -> str:
 
 def translate_state(code: str) -> str:
     return BR_STATE_NAMES.get(code, code)
+
+
+def translate_category(raw: str) -> str:
+    return CATEGORY_LABELS.get(raw, raw.replace("_", " ").capitalize())
 
 
 def run_query(sql: str, params: list | None = None) -> pd.DataFrame:
@@ -229,14 +315,26 @@ def render_overview(cte, params) -> None:
 
     st.subheader("Évolution mensuelle du taux de retard")
     monthly = run_query(
-        cte + "select annee, mois, avg(is_late) as taux_retard from base group by 1, 2 order by 1, 2",
+        cte + "select annee, mois, count(*) as n, avg(is_late) as taux_retard from base group by 1, 2 order by 1, 2",
         params,
     )
     if not monthly.empty:
         monthly["periode"] = (
             monthly["annee"].astype(int).astype(str) + "-" + monthly["mois"].astype(int).astype(str).str.zfill(2)
         )
-        st.line_chart(monthly.set_index("periode")["taux_retard"], color=COLOR_SEQUENTIAL)
+        # Même seuil de volume que région/catégorie : les tout premiers mois du
+        # dataset n'ont qu'une poignée de commandes (2016-09 : 1 commande, 100% de
+        # retard) — un artefact qui écrase l'échelle de tout le graphique et masque
+        # la vraie volatilité (1.36% à 21.36% sur les mois avec un volume réel).
+        included = monthly[monthly["n"] >= MIN_VOLUME]
+        excluded = monthly[monthly["n"] < MIN_VOLUME]
+        st.line_chart(included.set_index("periode")["taux_retard"], color=COLOR_SEQUENTIAL)
+        if not excluded.empty:
+            mois_exclus = ", ".join(excluded["periode"])
+            st.caption(
+                f"{len(excluded)} mois exclus du graphique (< {MIN_VOLUME} commandes, "
+                f"pas assez de volume pour un taux fiable) : {mois_exclus}."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -249,22 +347,47 @@ def _split_by_volume(df: pd.DataFrame, group_col: str):
     return included, excluded
 
 
-def _ordered(series: pd.Series) -> pd.Series:
+def _horizontal_bar(
+    df: pd.DataFrame, category_col: str, value_col: str,
+    value_format: str, color: str, tooltip: list[str],
+) -> None:
     """
-    Force l'axe des catégories à suivre l'ordre du DataFrame (déjà trié en amont)
-    plutôt que de laisser Vega-Lite retomber sur son tri alphabétique par défaut.
-    Vérifié empiriquement (pas supposé) : un index de type string plat est encodé
-    'nominal' par Streamlit, et Vega-Lite trie les champs nominal par ordre
-    alphabétique quand aucun `sort` n'est fourni. Un pandas Categorical ORDONNÉ fait
-    passer l'encodage en 'ordinal', qui respecte l'ordre déclaré des catégories.
+    Barres horizontales avec un ORDRE EXPLICITE.
+
+    Le premier jet utilisait un pandas Categorical ordonné en espérant que la
+    promotion du champ vers le type Vega-Lite 'ordinal' ferait respecter l'ordre du
+    DataFrame — ÇA NE MARCHAIT PAS EN RENDU RÉEL (rapporté par l'utilisateur : les
+    états s'affichaient par ordre alphabétique). Le vrai mécanisme Vega-Lite : sans
+    `sort` explicite, le tri par défaut d'un axe est ascendant sur la VALEUR du
+    champ — peu importe le type nominal/ordinal, ça retombe sur l'alphabétique pour
+    du texte. `alt.Y(..., sort=<liste explicite>)` est le mécanisme documenté et sans
+    ambiguïté d'Altair pour imposer un ordre — utilisé ici à la place de st.bar_chart,
+    qui ne permet pas de contrôler `sort` directement.
+
+    Le volume (n) est en tooltip, jamais dans le libellé de l'axe — évite les
+    libellés tronqués ("Mato Grosso do S…") signalés sur la version précédente.
     """
-    series = series.copy()
-    series.index = pd.Categorical(series.index, categories=list(series.index), ordered=True)
-    return series
+    if df.empty:
+        return
+    order = df[category_col].tolist()
+    chart = (
+        alt.Chart(df)
+        .mark_bar(color=color)
+        .encode(
+            x=alt.X(f"{value_col}:Q", title=None, axis=alt.Axis(format=value_format)),
+            y=alt.Y(f"{category_col}:N", sort=order, title=None),
+            tooltip=tooltip,
+        )
+        .properties(height=26 * len(df) + 10)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+TOP_N_REGIONS = 10
 
 
 def render_region_analysis(cte, params) -> None:
-    st.subheader("Taux de retard par région")
+    st.subheader(f"Taux de retard par région — top {TOP_N_REGIONS} les plus à risque")
     df = run_query(
         cte + "select customer_state, count(*) as n, avg(is_late) as taux_retard from base group by 1",
         params,
@@ -276,14 +399,32 @@ def render_region_analysis(cte, params) -> None:
     if included.empty:
         st.info(f"Aucune région n'atteint le minimum de {MIN_VOLUME} commandes pour ces filtres.")
         return
-    included["état"] = included["customer_state"].map(translate_state)
-    included["label"] = included["état"] + " — " + included["n"].map(lambda n: f"{n:,} commandes")
-    included = included.sort_values("taux_retard", ascending=False)
-    plot_df = _ordered(included.set_index("label")["taux_retard"])
-    st.bar_chart(plot_df, horizontal=True, color=COLOR_SEQUENTIAL)
+    included["État"] = included["customer_state"].map(translate_state)
+    included["Commandes"] = included["n"]
+    included["Taux de retard"] = included["taux_retard"]
+    top = included.sort_values("Taux de retard", ascending=False).head(TOP_N_REGIONS)
+
+    col_chart, col_table = st.columns([2, 1])
+    with col_chart:
+        _horizontal_bar(
+            top, category_col="État", value_col="Taux de retard", value_format=".0%",
+            color=COLOR_SEQUENTIAL, tooltip=["État", "Commandes", alt.Tooltip("Taux de retard", format=".1%")],
+        )
+    with col_table:
+        st.dataframe(
+            top[["État", "Commandes", "Taux de retard"]]
+                .style.format({"Commandes": "{:,}", "Taux de retard": "{:.1%}"}),
+            hide_index=True, use_container_width=True,
+        )
+    n_not_shown = len(included) - len(top)
+    footnote = []
+    if n_not_shown > 0:
+        footnote.append(f"{n_not_shown} autre(s) région(s) au-dessus du seuil, non affichée(s) (hors top {TOP_N_REGIONS}).")
     if not excluded.empty:
         noms = ", ".join(translate_state(s) for s in excluded["customer_state"])
-        st.caption(f"{len(excluded)} état(s) exclus (< {MIN_VOLUME} commandes) : {noms}.")
+        footnote.append(f"{len(excluded)} état(s) exclus (< {MIN_VOLUME} commandes) : {noms}.")
+    if footnote:
+        st.caption(" ".join(footnote))
 
 
 def render_category_analysis(cte, params) -> None:
@@ -299,19 +440,21 @@ def render_category_analysis(cte, params) -> None:
     if included.empty:
         st.info(f"Aucune catégorie n'atteint le minimum de {MIN_VOLUME} commandes pour ces filtres.")
         return
-    included = included.sort_values("taux_retard", ascending=False)
+    included["Catégorie"] = included["product_category_name"].map(translate_category)
+    included["Commandes"] = included["n"]
+    included["Taux de retard"] = included["taux_retard"]
+    included = included.sort_values("Taux de retard", ascending=False)
 
+    tooltip = ["Catégorie", "Commandes", alt.Tooltip("Taux de retard", format=".1%")]
     col_worst, col_best = st.columns(2)
     with col_worst:
         st.caption("10 catégories les plus à risque")
-        worst = included.head(10).copy()
-        worst["label"] = worst["product_category_name"] + " — " + worst["n"].map(lambda n: f"{n:,}")
-        st.bar_chart(_ordered(worst.set_index("label")["taux_retard"]), horizontal=True, color=COLOR_SEQUENTIAL)
+        worst = included.head(10)
+        _horizontal_bar(worst, "Catégorie", "Taux de retard", ".0%", COLOR_SEQUENTIAL, tooltip)
     with col_best:
         st.caption("10 catégories les plus fiables")
-        best = included.tail(10).sort_values("taux_retard", ascending=False).copy()
-        best["label"] = best["product_category_name"] + " — " + best["n"].map(lambda n: f"{n:,}")
-        st.bar_chart(_ordered(best.set_index("label")["taux_retard"]), horizontal=True, color=COLOR_SEQUENTIAL)
+        best = included.tail(10).sort_values("Taux de retard", ascending=False)
+        _horizontal_bar(best, "Catégorie", "Taux de retard", ".0%", COLOR_SEQUENTIAL, tooltip)
 
     if not excluded.empty:
         st.caption(f"{len(excluded)} catégorie(s) exclue(s) (< {MIN_VOLUME} commandes), non affichées.")
@@ -339,10 +482,13 @@ def render_satisfaction_link(cte, params) -> None:
         f"point(s) de satisfaction en moins.**"
     )
     chart_df = pd.DataFrame({
-        "statut": ["Livrée à l'heure", "Livrée en retard"],
-        "note": [a_temps, retard],
-    }).set_index("statut")["note"]
-    st.bar_chart(_ordered(chart_df), horizontal=True, color=COLOR_SEQUENTIAL)
+        "Statut": ["Livrée à l'heure", "Livrée en retard"],
+        "Note": [a_temps, retard],
+    })
+    _horizontal_bar(
+        chart_df, "Statut", "Note", ".1f", COLOR_SEQUENTIAL,
+        ["Statut", alt.Tooltip("Note", format=".2f")],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -377,9 +523,13 @@ def render_prediction(cte, params) -> None:
         group by 1 order by n desc
     """, params)
     if not drivers.empty:
-        drivers["facteur"] = drivers["feature_name"].map(translate_feature)
-        drivers = drivers.sort_values("n", ascending=False)
-        st.bar_chart(_ordered(drivers.set_index("facteur")["n"]), horizontal=True, color=COLOR_SEQUENTIAL)
+        drivers["Facteur"] = drivers["feature_name"].map(translate_feature)
+        drivers["Commandes"] = drivers["n"]
+        drivers = drivers.sort_values("Commandes", ascending=False)
+        _horizontal_bar(
+            drivers, "Facteur", "Commandes", ",.0f", COLOR_SEQUENTIAL,
+            ["Facteur", "Commandes"],
+        )
     else:
         st.info("Aucun facteur de risque pour ces filtres.")
 
