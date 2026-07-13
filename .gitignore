@@ -27,9 +27,15 @@ dbt/target/
 dbt/logs/
 dbt/.user.yml
 
-# Claude Code — local only, sauf skills/ qui est de la méthodologie projet
-.claude/*
-!.claude/skills/
+# Claude Code — outillage de développement local uniquement, jamais publié
+.claude/
+
+# Fichiers de pilotage de l'assistant IA — usage de développement local uniquement,
+# jamais publiés (le repo public montre le résultat, pas les instructions de session)
+CLAUDE.md
+Prompt.txt
+SKILL.md
+auditeur-projet-ai-bi.skill
 
 # OS
 .DS_Store
