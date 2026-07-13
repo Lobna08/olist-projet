@@ -1,11 +1,11 @@
-Export généré le 2026-07-13T12:11:34.431549+00:00 par src/models/export_dashboard_data.py
+Export généré le 2026-07-13T18:56:37.906715+00:00 par src/models/export_dashboard_data.py
 Instantané figé pour la démo Streamlit Cloud — PAS mis à jour automatiquement.
 Pour rafraîchir : relancer predict.py puis ce script, puis commit + push.
 
   fct_orders.parquet — 4575.8 Ko
   dim_customer.parquet — 1781.1 Ko
-  dim_product.parquet — 582.8 Ko
-  dim_date.parquet — 3.8 Ko
-  int_orders_enriched.parquet — 3116.2 Ko
+  dim_product.parquet — 584.1 Ko
+  dim_date.parquet — 3.9 Ko
+  int_orders_enriched.parquet — 3110.7 Ko
   order_risk_scores.parquet — 1986.8 Ko
   order_risk_drivers.parquet — 1766.1 Ko
