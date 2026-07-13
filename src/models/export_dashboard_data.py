@@ -1,5 +1,5 @@
 """
-J10 — Export Parquet pour le dashboard déployé (Streamlit Community Cloud).
+Export Parquet pour le dashboard déployé (Streamlit Community Cloud).
 
 app/app.py lit normalement data/duckdb/olist.db (gitignored, 93 Mo, généré). Un clone
 du dépôt sur Streamlit Cloud n'a pas ce fichier — ce script exporte, en colonnes

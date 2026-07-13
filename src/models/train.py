@@ -4,7 +4,7 @@ Split temporel strict (train = achats avant CUTOFF_DATE, test = à partir de CUT
 Lancer depuis la racine du projet : python src/models/train.py
 
 Justification du cutoff (2018-06-01) et de la ventilation mensuelle : voir le rapport
-généré dans artifacts/j6_modeling_report.md à chaque exécution.
+généré dans artifacts/modeling_report.md à chaque exécution.
 """
 from pathlib import Path
 
@@ -28,17 +28,17 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = PROJECT_ROOT / "data" / "duckdb" / "olist.db"
-REPORT_PATH = PROJECT_ROOT / "artifacts" / "j6_modeling_report.md"
+REPORT_PATH = PROJECT_ROOT / "artifacts" / "modeling_report.md"
 
 CUTOFF_DATE = "2018-06-01"
-# Cutoffs alternatifs testés pour justifier le choix ci-dessus (cf. discussion J6) :
-# reculer le cutoff ne rapproche pas le taux de retard test du train (volatilité
-# structurelle du dataset, pas un effet d'un seul mois anormal) — gardé ici pour que
-# le rapport de justification soit régénéré automatiquement à chaque run, jamais figé.
+# Cutoffs alternatifs testés pour justifier le choix ci-dessus : reculer le cutoff ne
+# rapproche pas le taux de retard test du train (volatilité structurelle du dataset,
+# pas un effet d'un seul mois anormal) — gardé ici pour que le rapport de
+# justification soit régénéré automatiquement à chaque run, jamais figé.
 CANDIDATE_CUTOFFS = ["2018-04-01", "2018-05-01", "2018-06-01", "2018-07-01"]
 
 # Seuil de décision retenu pour la régression logistique (modèle final), tranché par
-# l'utilisateur après revue du tableau seuil/précision/recall du J6 — ce n'est PAS une
+# l'utilisateur après revue du tableau seuil/précision/recall — ce n'est PAS une
 # valeur optimisée en boucle sur le test, c'est un arbitrage métier documenté :
 # raisonnement -> coût de l'action déclenchée par une alerte -> tolérance aux fausses
 # alertes -> seuil. Ici, l'alerte déclenche une action automatique à faible coût (pas
@@ -163,9 +163,9 @@ def fit_models(X_train: pd.DataFrame, y_train: pd.Series, feature_cols: list[str
     ])
     logreg.fit(X_train, y_train)
 
-    # Un seul ajustement de régularisation (pas un tuning) : le diagnostic train/test du
-    # J6 a montré un sur-apprentissage net avec les hyperparamètres par défaut (ratio
-    # PR-AUC train/test x3.88, contre x1.42 pour la régression logistique). reg_lambda=1.0
+    # Un seul ajustement de régularisation (pas un tuning) : le diagnostic train/test de
+    # modélisation a montré un sur-apprentissage net avec les hyperparamètres par défaut
+    # (ratio PR-AUC train/test x3.88, contre x1.42 pour la régression logistique). reg_lambda=1.0
     # et num_leaves=15 (au lieu de 31) réduisent la capacité de mémorisation. Ajustement
     # unique, décidé a priori sur le critère "l'écart train/test se referme-t-il ?" — pas
     # une boucle sur le PR-AUC test, ce qui serait une fuite méthodologique (optimiser sur
@@ -187,16 +187,17 @@ def fit_lgbm_variant(
 ) -> Pipeline:
     """
     Variante paramétrable du pipeline LightGBM de fit_models, réservée aux expériences
-    de diagnostic du J7 (isoler l'effet d'un retrait de feature ou d'une capacité
-    réduite sur le sur-apprentissage). Réutilise build_preprocessor pour ne jamais
-    dupliquer la logique d'imputation/scaling entre train.py et explain.py — la
+    de diagnostic d'explicabilité (isoler l'effet d'un retrait de feature ou d'une
+    capacité réduite sur le sur-apprentissage). Réutilise build_preprocessor pour ne
+    jamais dupliquer la logique d'imputation/scaling entre train.py et explain.py — la
     duplication serait le vrai risque (un correctif appliqué dans un fichier, oublié
     dans l'autre).
 
-    Les hyperparamètres de base sont ceux retenus en J6 (num_leaves=15, reg_lambda=1.0) ;
-    lgbm_overrides les surcharge ponctuellement. Chaque appel du J7 ne change qu'UN levier
-    à la fois (une feature retirée de feature_cols, OU un hyperparamètre), jamais plusieurs
-    simultanément — sinon un résultat ne serait plus attribuable à une cause précise.
+    Les hyperparamètres de base sont ceux retenus en modélisation (num_leaves=15,
+    reg_lambda=1.0) ; lgbm_overrides les surcharge ponctuellement. Chaque appel ne
+    change qu'UN levier à la fois (une feature retirée de feature_cols, OU un
+    hyperparamètre), jamais plusieurs simultanément — sinon un résultat ne serait plus
+    attribuable à une cause précise.
     """
     params = dict(class_weight="balanced", random_state=42, verbose=-1, num_leaves=15, reg_lambda=1.0)
     params.update(lgbm_overrides)
@@ -454,7 +455,7 @@ def write_report(
 ) -> None:
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     parts = [
-        "# J6 — Modélisation : résultats et justification du split\n",
+        "# Modélisation : résultats et justification du split\n",
         f"Cutoff retenu : **{CUTOFF_DATE}** (train = achats avant cette date, test = à partir de cette date).\n",
         "## Comparaison des 3 modèles (test agrégé, juin-août 2018)\n",
         _df_to_markdown(results) + "\n",

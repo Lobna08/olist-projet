@@ -1,7 +1,7 @@
 """
-J7 — Explicabilité SHAP sur LightGBM (outil de diagnostic, PAS le modèle final).
+Explicabilité SHAP sur LightGBM (outil de diagnostic, PAS le modèle final).
 Le modèle final retenu pour la prédiction en production est la régression logistique
-(cf. artifacts/j6_modeling_report.md) : meilleur PR-AUC test, meilleure généralisation.
+(cf. artifacts/modeling_report.md) : meilleur PR-AUC test, meilleure généralisation.
 LightGBM est gardé uniquement ici pour lire les interactions non-linéaires entre
 features via SHAP — une lecture que la régression logistique (linéaire, coefficients
 globaux) ne permet pas nativement.
@@ -36,7 +36,7 @@ from src.models.train import (  # noqa: E402
     split_train_test,
 )
 
-REPORT_PATH = PROJECT_ROOT / "artifacts" / "j7_shap_report.md"
+REPORT_PATH = PROJECT_ROOT / "artifacts" / "explainability_report.md"
 
 N_TOP_FEATURES_GLOBAL = 15
 N_TOP_FEATURES_LOCAL = 8
@@ -242,7 +242,7 @@ def pick_examples(y_test: pd.Series, y_proba: np.ndarray, order_ids: pd.Series) 
 
 def leakage_sanity_check(feature_names: list[str]) -> str:
     """
-    Re-vérification anti-fuite spécifique au J7 : les colonnes interdites ne doivent
+    Re-vérification anti-fuite spécifique à ce diagnostic d'explicabilité : les colonnes interdites ne doivent
     apparaître ni dans les features brutes (déjà garanti par train.py) ni, transformées,
     dans les noms de features vus par SHAP. Un score LightGBM "trop beau" serait le
     premier signal à investiguer ici — ce n'est PAS le cas (PR-AUC test 0.087, sous la
@@ -264,7 +264,7 @@ def leakage_sanity_check(feature_names: list[str]) -> str:
 
 def metric_and_limits_section() -> str:
     """
-    Section narrative (pas de calcul ici, synthèse de faits déjà établis en J6/J7) :
+    Section narrative (pas de calcul ici, synthèse de faits déjà établis en modélisation/explicabilité) :
     justification de la métrique + limites honnêtes. Texte statique volontairement — ce
     n'est pas un nombre à recalculer, c'est un raisonnement à assumer par écrit, exigé
     par le brief (section limites) et par la grille d'évaluation.
@@ -292,7 +292,7 @@ def metric_and_limits_section() -> str:
         "base SHAP moyen de LightGBM est ≈40%, très au-dessus du 5.48% réel du test). Les "
         "probabilités ne sont fiables qu'en ranking relatif (\"plus risqué que\"), jamais "
         "en lecture absolue (\"X% de chances de retard\"). Implication directe pour le "
-        "seuil retenu (0.60, cf. J6) : ce n'est pas \"60% de chances de retard\", c'est un "
+        "seuil retenu (0.60, cf. rapport de modélisation) : ce n'est pas \"60% de chances de retard\", c'est un "
         "point de coupure choisi sur la courbe précision/recall.\n",
         "3. **LightGBM surapprend plus que la régression logistique** (ratio PR-AUC "
         "train/test 3.2x contre 1.4x, même après réduction de `num_leaves` et ajout de "
@@ -300,7 +300,7 @@ def metric_and_limits_section() -> str:
         "modèle de production — il est gardé seulement pour SHAP, où le sur-apprentissage "
         "biaise l'échelle des contributions mais pas leur ordre de grandeur relatif.\n",
         "4. **Un seul split temporel, pas de validation glissante.** Le taux de retard "
-        "mensuel varie de 1.36% à 21.36% sur la période disponible (cf. J6) : un cutoff "
+        "mensuel varie de 1.36% à 21.36% sur la période disponible (cf. rapport de modélisation) : un cutoff "
         "unique capture une fenêtre de test possiblement non représentative des mois "
         "hors échantillon. Une validation walk-forward (plusieurs cutoffs successifs) "
         "donnerait une estimation plus robuste — non faite ici par contrainte de temps.\n",
@@ -428,14 +428,16 @@ def overfitting_ablation_table(
     feature_cols: list[str],
 ) -> pd.DataFrame:
     """
-    Bloc B — table d'ablation pour diagnostiquer la cause du sur-apprentissage LightGBM
-    (ratio PR-AUC train/test x3.2 contre x1.4 pour la régression logistique, cf. J6).
+    Table d'ablation pour diagnostiquer la cause du sur-apprentissage LightGBM
+    (ratio PR-AUC train/test x3.2 contre x1.4 pour la régression logistique, cf.
+    rapport de modélisation).
 
     Chaque ligne isole UN levier à la fois (jamais deux réglages changés simultanément,
     sinon un résultat n'est plus attribuable à une cause précise) :
     - 2 lignes de référence (régression logistique + LightGBM baseline, valeurs déjà
-      connues du J6, recalculées ici sur les MÊMES pipelines déjà fit pour garantir des
-      chiffres identiques au rapport J6 — pas de ré-entraînement redondant) ;
+      connues de la modélisation, recalculées ici sur les MÊMES pipelines déjà fit pour
+      garantir des chiffres identiques au rapport de modélisation — pas de
+      ré-entraînement redondant) ;
     - 1 ligne hypothèse : LightGBM sans seller_late_rate_max ;
     - 3 lignes contrôle : LightGBM sans chacune des 3 AUTRES features du top SHAP,
       pour vérifier que l'effet de l'hypothèse n'est pas générique ;
@@ -445,7 +447,7 @@ def overfitting_ablation_table(
       effets se cumulent.
 
     fit_lgbm_variant() vient de train.py (pas dupliqué ici) : mêmes garde-fous
-    anti-fuite, même préprocesseur que le pipeline LightGBM du J6.
+    anti-fuite, même préprocesseur que le pipeline LightGBM de la modélisation.
     """
     rows = []
 
@@ -461,8 +463,8 @@ def overfitting_ablation_table(
             "ratio_train_test": round(auc_train / auc_test, 2),
         })
 
-    add_row("Référence — Régression logistique (J6)", models["Régression logistique"], X_train, X_test)
-    add_row("Baseline — LightGBM (J6, toutes features)", models["LightGBM"], X_train, X_test)
+    add_row("Référence — Régression logistique", models["Régression logistique"], X_train, X_test)
+    add_row("Baseline — LightGBM (toutes features)", models["LightGBM"], X_train, X_test)
 
     cols_no_hypothesis = [c for c in feature_cols if c != HYPOTHESIS_FEATURE]
     pipe = fit_lgbm_variant(X_train, y_train, cols_no_hypothesis)
@@ -502,9 +504,9 @@ def seller_late_rate_hypothesis_verdict(ablation_df: pd.DataFrame, X_train: pd.D
     def get(label: str, col: str) -> float:
         return float(ablation_df.loc[ablation_df["variante"] == label, col].iloc[0])
 
-    logreg_ratio = get("Référence — Régression logistique (J6)", "ratio_train_test")
-    base_ratio = get("Baseline — LightGBM (J6, toutes features)", "ratio_train_test")
-    base_test = get("Baseline — LightGBM (J6, toutes features)", "pr_auc_test")
+    logreg_ratio = get("Référence — Régression logistique", "ratio_train_test")
+    base_ratio = get("Baseline — LightGBM (toutes features)", "ratio_train_test")
+    base_test = get("Baseline — LightGBM (toutes features)", "pr_auc_test")
 
     hyp_label = f"Hypothèse — sans {HYPOTHESIS_FEATURE}"
     hyp_ratio = get(hyp_label, "ratio_train_test")
@@ -552,7 +554,7 @@ def seller_late_rate_hypothesis_verdict(ablation_df: pd.DataFrame, X_train: pd.D
     return "\n".join([
         "## Bloc B — Diagnostic du sur-apprentissage LightGBM : hypothèse "
         f"{HYPOTHESIS_FEATURE}\n",
-        f"Constat de départ (J6) : LightGBM sur-apprend nettement plus que la régression "
+        f"Constat de départ (cf. rapport de modélisation) : LightGBM sur-apprend nettement plus que la régression "
         f"logistique (ratio PR-AUC train/test **{base_ratio}** contre **{logreg_ratio}**). "
         f"Hypothèse testée : {HYPOTHESIS_FEATURE} — un taux de retard vendeur lissé mais "
         f"quasi unique par ligne ({n_unique:,}/{n_train:,} valeurs distinctes sur le train, "
@@ -600,7 +602,7 @@ def seller_late_rate_hypothesis_verdict(ablation_df: pd.DataFrame, X_train: pd.D
         "pas l'écart restant à lui seul non plus.\n"
         f"3. **Écart résiduel après (1)+(2) combinés** ({combo_ratio} contre "
         f"{logreg_ratio} pour la régression logistique) : cohérent avec la conclusion "
-        "déjà actée en J6 — LightGBM, même régularisé et même privé de sa feature la "
+        "déjà actée en modélisation — LightGBM, même régularisé et même privé de sa feature la "
         "plus problématique, généralise structurellement moins bien que la régression "
         "logistique sur ce problème à faible signal. Ce test confirme ce choix de modèle "
         "de production plutôt qu'il ne le remet en cause.\n",
@@ -678,8 +680,8 @@ def main() -> None:
 
         REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
         parts = [
-            "# J7 — Explicabilité SHAP (LightGBM, outil de diagnostic)\n",
-            "Le modèle final de production est la régression logistique (cf. J6). LightGBM "
+            "# Explicabilité SHAP (LightGBM, outil de diagnostic)\n",
+            "Le modèle final de production est la régression logistique (cf. rapport de modélisation). LightGBM "
             "est utilisé ICI uniquement pour lire les interactions non-linéaires entre "
             "features via SHAP — une lecture qu'un modèle linéaire ne permet pas.\n",
             "## Vérification anti-fuite (avant toute lecture des résultats)\n",

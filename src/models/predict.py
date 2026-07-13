@@ -1,7 +1,7 @@
 """
-J8 — Réinjection des prédictions dans l'entrepôt DuckDB (main.order_risk_scores,
+Réinjection des prédictions dans l'entrepôt DuckDB (main.order_risk_scores,
 main.order_risk_drivers). La prédiction devient une dimension filtrable dans la couche
-BI (star schema), pas un artefact de notebook à côté — cf. docs/plan_14_jours.md Bloc 3.
+BI (star schema), pas un artefact de notebook à côté — cf. docs/plan_14_jours.md, Bloc 3.
 
 Séquencement obligatoire : lancer APRÈS `dbt run` (nécessite marts.fct_orders) et après
 `python src/features/build_features.py` (nécessite main.features_orders).
@@ -32,7 +32,7 @@ from src.models.train import (  # noqa: E402
     split_train_test,
 )
 
-REPORT_PATH = PROJECT_ROOT / "artifacts" / "j8_prediction_integration_report.md"
+REPORT_PATH = PROJECT_ROOT / "artifacts" / "prediction_integration_report.md"
 N_TOP_DRIVERS = 3
 
 RISK_TIER_LOW = "Sous seuil"
@@ -67,8 +67,8 @@ def compute_risk_scores(
     score de commande vue au training et un score de commande jamais vue seraient
     indiscernables dans la même colonne, ce qui SERAIT trompeur.
 
-    risk_tier a 3 paliers dérivés de seuils déjà justifiés en J6 (jamais de nouveau
-    seuil inventé ici) : DECISION_THRESHOLD (0.60, arbitrage métier) et q90_threshold
+    risk_tier a 3 paliers dérivés de seuils déjà justifiés en modélisation (jamais de
+    nouveau seuil inventé ici) : DECISION_THRESHOLD (0.60, arbitrage métier) et q90_threshold
     (règle "10% les plus à risque", recalculé à chaque run par defensible_thresholds
     sur le TEST — jamais une constante recopiée à la main).
     """
@@ -102,7 +102,7 @@ def compute_drivers(
     somme des contributions + l'intercept EST le score en log-odds (pas une
     approximation comme SHAP sur les arbres, qui répartit une contribution non-additive
     par nature). Cohérence par construction avec le modèle réellement déployé :
-    LightGBM+SHAP (J7) reste un outil de diagnostic séparé, jamais mélangé ici avec le
+    LightGBM+SHAP (rapport d'explicabilité) reste un outil de diagnostic séparé, jamais mélangé ici avec le
     score de production.
 
     Vectorisé (pas de boucle Python par commande, ~96 470 lignes) : argsort sur
@@ -137,7 +137,7 @@ def sanity_checks(
     df: pd.DataFrame, train_df: pd.DataFrame,
 ) -> None:
     """
-    Garde-fous exécutables du J8 : la population scorée doit être exactement la
+    Garde-fous exécutables de l'intégration des prédictions : la population scorée doit être exactement la
     population de features_orders (aucune commande perdue ou dupliquée en route), et
     is_in_sample doit partitionner EXACTEMENT comme split_train_test — un décalage ici
     signifierait que des commandes de train sont étiquetées comme scores honnêtes (ou
@@ -194,7 +194,8 @@ def risk_tier_reading_note(
     extrême ; test : 10.01%, l'inverse de l'hypothèse). Mécanisme réel identifié :
     class_weight="balanced" est calibré sur le déséquilibre de TRAIN uniquement (fit()
     ne voit que X_train/y_train) ; si le déséquilibre réel du test est différent
-    (généralement plus marqué, car le taux de retard varie fortement par mois, cf. J6),
+    (généralement plus marqué, car le taux de retard varie fortement par mois, cf.
+    rapport de modélisation),
     le même modèle projette des probabilités systématiquement plus hautes sur la
     population dont le déséquilibre diffère le plus de celui du train — indépendamment
     du sur-apprentissage. Recalculé et reformulé dynamiquement pour rester correct si
@@ -227,8 +228,8 @@ def risk_tier_reading_note(
         f"{imbalance_more_skewed_side}). Le même modèle, appliqué à une population dont "
         "le déséquilibre diffère de celui sur lequel il a été calibré, projette des "
         "probabilités systématiquement décalées pour cette population — un effet "
-        "distinct du sur-apprentissage, qui s'ajoute à la limite déjà documentée en J7 "
-        "(probabilités non calibrées, `class_weight=\"balanced\"`). Ne pas comparer les "
+        "distinct du sur-apprentissage, qui s'ajoute à la limite déjà documentée dans le "
+        "rapport d'explicabilité (probabilités non calibrées, `class_weight=\"balanced\"`). Ne pas comparer les "
         "deux sous-populations comme si elles étaient sur la même échelle de risque "
         "réel — c'est tout l'intérêt de garder `is_in_sample` visible plutôt que de "
         "mélanger silencieusement les deux.\n"
@@ -252,12 +253,12 @@ def write_report(
 
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
     parts = [
-        "# J8 — Prédictions dans l'entrepôt (main.order_risk_scores, main.order_risk_drivers)\n",
+        "# Intégration des prédictions dans l'entrepôt (main.order_risk_scores, main.order_risk_drivers)\n",
         "Score de risque produit par la régression logistique (modèle de production, "
-        f"seuil {DECISION_THRESHOLD}, cf. J6) et écrit dans DuckDB comme dimension "
+        f"seuil {DECISION_THRESHOLD}, cf. rapport de modélisation) et écrit dans DuckDB comme dimension "
         "filtrable — pas dans un notebook à côté. Drivers = décomposition linéaire "
         "exacte du score LogReg (`coef × valeur standardisée`), pas SHAP : SHAP a été "
-        "calculé sur LightGBM (J7), qui n'est pas le modèle de production. Afficher un "
+        "calculé sur LightGBM (rapport d'explicabilité), qui n'est pas le modèle de production. Afficher un "
         "score et une explication issus de deux modèles différents serait incohérent — "
         "écart assumé par rapport au texte initial de docs/plan_14_jours.md.\n",
         "## Portée : toutes les commandes, avec is_in_sample\n",
@@ -288,7 +289,7 @@ def write_report(
         "délibérément une dimension vendeur (le grain de commande ≠ grain d'item, une "
         "commande peut avoir plusieurs vendeurs). Rouvrir ce point demanderait de "
         "résoudre quel vendeur porte le `seller_late_rate_max` de chaque commande — "
-        "non fait ici, décision reconfirmée avec l'utilisateur au J8. Filtres livrés : "
+        "non fait ici, décision reconfirmée avec l'utilisateur à l'intégration des prédictions. Filtres livrés : "
         "région (état client), catégorie produit, période.\n",
     ]
     REPORT_PATH.write_text("\n".join(parts), encoding="utf-8")
