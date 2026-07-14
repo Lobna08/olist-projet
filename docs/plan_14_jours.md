@@ -1,15 +1,11 @@
 # Plan de développement — Olist Delivery-Risk Command Center
 
-> Mode : l'agent (Claude Code) code, j'explique/valide/défends. Deadline stricte sur
-> deux semaines. Les derniers jours de développement sont sanctuarisés pour la
-> finition — ne pas les grignoter.
-
 ## Bloc 1 — Fondations BI
 
 - **Setup + cadrage.** Repo git (structure `data/ src/ models/ notebooks/ docs/`, `.gitignore`, `requirements.txt`), instructions projet + skill en place. Définir la cible par écrit (livré en retard = 1), figer le moment de prédiction = order time. Démarrer l'EDA. *Livrable : repo propre + page de cadrage.*
 - **EDA + schéma.** Profilage, grain, clés, valeurs manquantes. Dessiner le star schema (fait = commandes ; dims = client, vendeur, produit, date, géo). Charger les CSV bruts dans un schéma `raw` DuckDB. *Livrable : star schema validé + raw dans DuckDB.*
 - **dbt : sources + staging.** Init dbt Core (`dbt-duckdb`), sources, un staging par table, traduction des catégories en seed. *Livrable : couche staging fonctionnelle.*
-- **dbt : marts + tests → ⚠️ POINT DE CONTRÔLE.** Fait + dimensions, tests `unique`/`not_null`/`relationships`. Décision : pipeline OK → on garde dbt ; en retard → bascule SQL DuckDB, dbt en "future work". *Livrable : star schema testé + capture du DAG `dbt docs`.*
+- **dbt : marts + tests → POINT DE CONTRÔLE.** Fait + dimensions, tests `unique`/`not_null`/`relationships`. Décision : pipeline OK → on garde dbt ; en retard → bascule SQL DuckDB, dbt en "future work". *Livrable : star schema testé + capture du DAG `dbt docs`.*
 
 ## Bloc 2 — Cœur IA
 
@@ -23,14 +19,8 @@
 - **Dashboard Streamlit.** Risque par région/SLA, vue d'ensemble (pas de filtre par vendeur individuel : `docs/star_schema.md` exclut délibérément une dimension vendeur, décision reconfirmée à l'intégration des prédictions). *Livrable : app locale.*
 - **Drill-down + démo.** Segment risqué → pourquoi (SHAP). Déploiement Streamlit Community Cloud (lien démo CV). *Livrable : dashboard intégré + URL publique.*
 
-## Bloc 4 — Livraison (sanctuarisé)
+## Bloc 4 — Livraison 
 
 - **README + repro.** README narratif (problème→données→schéma→modèle→résultat→lancer). Notebooks → modules `.py`. *Livrable : README qui raconte l'histoire.*
-- **Hygiène + gestion projet.** Historique git propre, board GitHub Projects, références citées. Buffer : NLP stretch seulement si le cœur est excellent. *Livrable : repo propre + board + biblio.*
 - **Présentation + feuille de route.** Deck de validation (idée, pertinence, faisabilité, approche) + roadmap. *Livrable : deck + roadmap.*
-- **Répétition de repro à blanc.** Cloner dans un dossier vierge, installer, une commande, vérifier. Finition. *Livrable : projet reproductible de bout en bout.*
-
-## Règles d'arbitrage
-- NLP = bonus, jamais une étape. Pas avant que le cœur soit excellent.
-- Le bloc Livraison est intouchable. Si un jour glisse, le scope du cœur se réduit (un modèle au lieu de trois), jamais la repro ni le README.
-- À chaque partie porteuse : si je ne sais pas l'expliquer sans l'agent, on ne passe pas à la suite.
+- *Livrable : projet reproductible de bout en bout.*
