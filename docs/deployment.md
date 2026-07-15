@@ -13,7 +13,7 @@ requête SQL ne change entre les deux modes.
 | Pourquoi | Le fichier `.db` (93 Mo) est gitignored, non publié | Streamlit Cloud clone le dépôt GitHub — pas de fichier `.db` disponible |
 | Signalé à l'écran | Rien (comportement normal) | Bandeau "Démonstration publique — données figées au [date]" |
 
-Le mode déployé est un **complément** pour obtenir un lien public (démo CV) — il ne
+Le mode déployé est un **complément** pour obtenir un lien public (démo LIVE) — il ne
 remplace pas le mode local, qui reste la preuve de l'intégration réelle à l'entrepôt
 DuckDB (star schema + prédictions comme dimension filtrable, cf. rapport
 d'intégration des prédictions).
