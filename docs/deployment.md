@@ -51,9 +51,6 @@ git commit -m "..."
 git push                                   # Streamlit Cloud redéploie automatiquement
 ```
 
-`data/dashboard_export/MANIFEST.txt` (généré par le script d'export) donne la date
-et la taille de chaque fichier — seule façon de vérifier, en regardant le dépôt,
-quand la démo a été figée pour la dernière fois.
 
 ## Déployer pour la première fois
 
@@ -74,17 +71,10 @@ quand la démo a été figée pour la dernière fois.
    figées au [date]" s'affiche — s'il est absent, l'app a probablement trouvé un
    `olist.db` quelque part (à investiguer, ne devrait pas arriver sur un clone
    propre).
-7. L'URL générée (`https://<nom-app>.streamlit.app`) est le lien à mettre sur le CV.
+7. L'URL générée (`https://<nom-app>.streamlit.app`) est le lien à mettre.
 
 ## Vérification avant de déployer
 
 Simuler le mode déployé en local (sans toucher au vrai `olist.db`) :
 
-```
-# Renommer temporairement (PAS supprimer) le fichier local pour forcer le mode Parquet
-mv data/duckdb/olist.db data/duckdb/olist.db.bak
-streamlit run app/app.py
-# Vérifier : bandeau "Démonstration publique" visible, les 3 onglets fonctionnent,
-# les filtres répondent, aucune erreur dans le terminal.
-mv data/duckdb/olist.db.bak data/duckdb/olist.db   # restaurer avant de continuer
 ```
