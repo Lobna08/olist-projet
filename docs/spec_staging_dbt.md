@@ -1,9 +1,9 @@
 # Spec staging dbt — Préparation & nettoyage Olist
 
-> Spec donnée à l'assistant IA pour la phase de staging. Décrit la couche raw → staging → intermediate (agrégation à la maille commande).
+> Décrit la couche raw → staging → intermediate (agrégation à la maille commande).
 > Le star schema (marts) vient APRÈS, dans un document séparé.
 >
-> Légende : ⚠️ = point fuite de données (discipline stricte).
+> Légende :ATTENTION = point fuite de données (discipline stricte).
 >
 > Convention de nommage : `stg_<source>` (nettoyage 1:1) · `int_<sujet>` (agrégation/jointure) · seeds pour le statique.
 
@@ -16,9 +16,6 @@ raw (9 CSV chargés tels quels)
             └─ marts (star schema) — document séparé, étape ultérieure
 ```
 
-Règle d'or : **toute table multi-lignes par commande doit être agrégée à la maille commande dans un `int_` AVANT d'entrer dans le fait.** C'est le point n°1 du projet.
-
----
 
 ## 1. `stg_orders` (source : olist_orders) — grain : 1 ligne / commande
 
@@ -26,13 +23,13 @@ Règle d'or : **toute table multi-lignes par commande doit être agrégée à la
 - **Filtrage statut** : pour le périmètre modèle, ne garder que `order_status = 'delivered'`. Documenter le volume retiré et le % que ça représente.
 - Exclure les commandes `delivered` dont `order_delivered_customer_date` est NULL (cible incalculable).
 - Exclure ou corriger les incohérences temporelles : `delivered_customer_date < purchase_timestamp`, délais négatifs. Décider exclusion vs correction, chiffrer.
-- ⚠️ **Frontière fuite** : les colonnes `order_delivered_*` servent UNIQUEMENT à fabriquer la cible plus tard. Les marquer mentalement comme « interdites en features ». `order_estimated_delivery_date` est connue à l'achat → autorisée en feature.
+-  **Frontière fuite** : les colonnes `order_delivered_*` servent UNIQUEMENT à fabriquer la cible plus tard. Les marquer mentalement comme « interdites en features ». `order_estimated_delivery_date` est connue à l'achat → autorisée en feature.
 - Tests dbt : `unique` + `not_null` sur `order_id`.
 
 ## 2. `stg_order_items` → `int_order_items` (source : olist_order_items)
 
 - `stg_order_items` : grain = 1 ligne / **article** (ne pas agréger ici). Caster `price`, `freight_value` en numérique.
-- ⚠️ Aberrations : `price <= 0`, `freight_value < 0` → inspecter, décider du seuil/de l'exclusion.
+-  Aberrations : `price <= 0`, `freight_value < 0` → inspecter, décider du seuil/de l'exclusion.
 - `int_order_items` : **agréger à la maille commande** :
   - `nb_items` = count
   - `total_price` = sum(price)
@@ -52,7 +49,7 @@ Règle d'or : **toute table multi-lignes par commande doit être agrégée à la
 
 ## 4. `stg_order_reviews` → `int_order_reviews` (source : olist_order_reviews)
 
-- ⚠️⚠️ **Fuite majeure** : la note et le texte de review arrivent APRÈS la livraison. INTERDITS comme features du modèle de retard. Ils servent aux KPIs satisfaction (BI) uniquement, jamais en entrée du modèle.
+-  **Fuite majeure** : la note et le texte de review arrivent APRÈS la livraison. INTERDITS comme features du modèle de retard. Ils servent aux KPIs satisfaction (BI) uniquement, jamais en entrée du modèle.
 - Déduplication : plusieurs reviews possibles par commande + doublons. Choisir une règle déterministe (ex. garder la review au `review_creation_date` la plus récente) et l'appliquer.
 - `int_order_reviews` : grain = 1 ligne / commande : `review_score` (une valeur), flags `is_negative` (≤2), `is_positive` (≥4).
 - Test : `unique` sur `order_id`.
@@ -93,21 +90,12 @@ Règle d'or : **toute table multi-lignes par commande doit être agrégée à la
 ## Modèle de synthèse `int_orders_enriched` (préparation du fait)
 
 Joindre, **à la maille commande**, `stg_orders` + `int_order_items` + `int_order_payments` + `int_order_reviews`.
-- ⚠️ Vérifier qu'après jointure le nombre de lignes = nombre de commandes (pas d'explosion de grain). Test : `unique` sur `order_id`.
+-  Vérifier qu'après jointure le nombre de lignes = nombre de commandes (pas d'explosion de grain). Test : `unique` sur `order_id`.
 - Ne PAS encore calculer la cible ni les features ici : ce modèle prépare les briques propres. Cible + features = étapes ultérieures (feature engineering, modélisation, explicabilité — parties porteuses), avec la discipline fuite.
 
----
-
-## Checklist de fin d'étape (à exiger de Claude Code)
-
-- [ ] Chaque `int_*` a un grain commande prouvé par un test `unique` sur `order_id`.
-- [ ] Toutes les colonnes post-livraison (dates de livraison réelle, review) sont identifiées et isolées des futures features.
-- [ ] Chaque exclusion est **chiffrée** (combien de lignes / quel %) et documentée.
-- [ ] Tests `relationships` posés sur les clés étrangères (order→customer, item→order, etc.).
-- [ ] `dbt docs generate` produit un DAG lisible (capture pour README/slides).
 
 ## Pièges rappelés
 
 1. **Le grain (n°1)** : joindre sans agréger d'abord = CA et taux de retard faux. C'est ce qu'un correcteur teste en premier.
 2. **Fuite** : review et dates de livraison réelle sont des poisons en features. Frontière nette dès le staging.
-3. **Documenter les exclusions** : un nettoyage non chiffré se lit « junior ».
+
