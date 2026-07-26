@@ -28,6 +28,11 @@ fait.
    mesure BI classique.
 3. Un dashboard Streamlit restitue le tout pour un utilisateur métier, sans
    vocabulaire technique.
+4. Un module complémentaire analyse le texte des avis clients négatifs pour en
+   détecter automatiquement les motifs récurrents (retard, livraison incomplète,
+   produit endommagé, produit incorrect), restitués eux aussi comme dimension
+   filtrable du dashboard — même logique d'intégration AI↔BI que la prédiction de
+   retard, appliquée cette fois à du texte plutôt qu'à des features tabulaires.
 
 ## Démo
 
@@ -46,9 +51,15 @@ raw (DuckDB)      staging (views)      intermediate (tables)      marts (star sc
 ─────────────     ─────────────────    ──────────────────────     ──────────────────────    ──────────────────────
 9 CSV Olist   →   typage, nettoyage →  agrégation à la maille  →  fct_orders +          →   order_risk_scores
 tels quels        grain = source       commande, jointures         dim_customer/           order_risk_drivers
-                                                                    product/date/geo        (prédictions,
-                                                                                              features)
+                                                                    product/date/geo        review_insights
+                                                                                             (prédictions, features,
+                                                                                              motifs d'insatisfaction)
 ```
+
+`main.review_insights` (`order_id`, `motif`, `sentiment`, `texte_nettoye`) est produit
+par le module `src/nlp/` (règles regex figées + classifieur TF-IDF/régression
+logistique), pas par le pipeline dbt — mais rejoint le même schéma `main` que les
+prédictions de retard, avec la même logique de dimension filtrable.
 
 Le star schema (`marts`) est le cœur BI classique : un fait `fct_orders` (grain
 commande, mesures `is_late`, `total_price`, `total_freight`...) relié à quatre
@@ -146,7 +157,7 @@ exécutable, pas seulement une bonne intention documentée.
 |---|---|---|
 | DuckDB | Entrepôt analytique | Base fichier unique, zéro serveur à administrer, largement suffisante pour ~96 k lignes |
 | dbt Core (dbt-duckdb) | Transformation SQL, tests de qualité | Couche staging/intermediate/marts testée (`unique`, `not_null`, `relationships`), pas de SQL ad hoc |
-| scikit-learn | Pipeline ML, régression logistique | Modèle de production : linéaire, interprétable, généralise mieux que LightGBM ici |
+| scikit-learn | Pipeline ML (régression logistique retard livraison + classification TF-IDF/régression logistique multinomiale des motifs d'insatisfaction) | Modèle de production linéaire, interprétable, généralise mieux que LightGBM sur le retard ; même logique légère (TF-IDF + linéaire, sans dépendance NLP supplémentaire) pour classer le texte des avis |
 | LightGBM + SHAP | Diagnostic d'explicabilité (pas le modèle de production) | Lit les interactions non-linéaires qu'un modèle linéaire ne peut pas capter |
 | Streamlit | Dashboard | Le plus rapide à mettre en production pour un usage interne/démo |
 
@@ -197,3 +208,9 @@ Détail complet du déploiement (mode local vs démo publique) :
 
 Le détail technique, les preuves et les chiffres complets sont dans
 [`docs/`](docs/README.md).
+
+- **Motifs d'insatisfaction (module NLP)** : F1 macro de 0,91 sur les 4 motifs
+  retenus (retard, livraison incomplète, produit endommagé, produit incorrect) —
+  module descriptif complémentaire à la prédiction de retard, jamais une feature du
+  pipeline prédictif (`is_late`) : détail, limites et seuils dans
+  [`docs/review_insights_report.md`](docs/review_insights_report.md).

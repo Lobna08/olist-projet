@@ -19,6 +19,12 @@ où trouver la preuve derrière chaque affirmation.
 | [`explainability_report.md`](explainability_report.md) | Comparaison croisée des coefficients de la régression logistique et de l'importance SHAP de LightGBM ; diagnostic du sur-apprentissage de LightGBM avec test d'ablation. |
 | [`prediction_integration_report.md`](prediction_integration_report.md) | Preuve que la prédiction est une dimension filtrable de l'entrepôt : structure des tables, requête de jointure à cinq tables, limites assumées. |
 
+## Analyse texte des avis clients
+
+| Document | Contenu |
+|---|---|
+| [`review_insights_report.md`](review_insights_report.md) | Motifs d'insatisfaction détectés dans les avis négatifs (règles figées + classifieur TF-IDF/régression logistique, F1 macro 0,91 sur 4 motifs), comptages figés, limites (biais de couverture, une catégorie marginale absorbée dans autre), séparation anti-fuite avec le pipeline prédictif. |
+
 ## Déploiement
 
 | Document | Contenu |
