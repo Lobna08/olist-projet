@@ -3,18 +3,21 @@ Export Parquet pour le dashboard déployé (Streamlit Community Cloud).
 
 app/app.py lit normalement data/duckdb/olist.db (gitignored, 93 Mo, généré). Un clone
 du dépôt sur Streamlit Cloud n'a pas ce fichier — ce script exporte, en colonnes
-strictement nécessaires à l'app (vérifié en lisant app/app.py, pas deviné), les 7
+strictement nécessaires à l'app (vérifié en lisant app/app.py, pas deviné), les 8
 tables dont il a besoin vers data/dashboard_export/*.parquet, versionné dans git
 (pas couvert par les règles .gitignore actuelles, qui ne couvrent que data/raw/,
 data/duckdb/ et les motifs *.db/*.duckdb).
 
 app/app.py lit ces fichiers via des VUES DuckDB schema-qualifiées quand olist.db est
 absent (voir _connect() dans app/app.py) — même SQL dans les deux modes, seule la
-source de données change.
+source de données change. Exception : la vue main.review_insights n'est créée que si
+review_insights.parquet existe déjà (cf. _connect()), pour que le dashboard reste
+utilisable même si le module NLP (src/nlp/build_review_insights.py) n'a jamais tourné.
 
 Séquencement obligatoire : lancer APRÈS `python src/models/predict.py` (a besoin de
-main.order_risk_scores / main.order_risk_drivers). Lancer depuis la racine du projet :
-python src/models/export_dashboard_data.py
+main.order_risk_scores / main.order_risk_drivers) ET APRÈS
+`python src/nlp/build_review_insights.py` (a besoin de main.review_insights). Lancer
+depuis la racine du projet : python src/models/export_dashboard_data.py
 """
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,6 +67,12 @@ EXPORTS: dict[str, str] = {
         select order_id, feature_name
         from main.order_risk_drivers
         where driver_rank = 1
+    """,
+    # order_id, motif, sentiment seulement : texte_nettoye exclu, jamais lu par
+    # app/app.py (section "Motifs d'insatisfaction") et plus lourd pour rien.
+    "review_insights": """
+        select order_id, motif, sentiment
+        from main.review_insights
     """,
 }
 

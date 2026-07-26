@@ -172,6 +172,17 @@ CATEGORY_LABELS = {
     "watches_gifts": "Montres et cadeaux",
 }
 
+# Les 4 motifs figés par src/nlp/build_review_insights.py (aspect_mismatch absorbé
+# dans "autre", cf. artifacts/review_insights_report.md) -- "autre" et "non_applicable"
+# ne sont volontairement pas traduits ici : ils sont exclus de la requête avant
+# affichage, jamais montrés à l'écran.
+MOTIF_LABELS = {
+    "retard_livraison": "Retard de livraison",
+    "livraison_incomplete": "Livraison incomplète",
+    "produit_endommage": "Produit endommagé",
+    "produit_incorrect": "Produit incorrect",
+}
+
 st.set_page_config(page_title="Olist — Pilotage risque livraison", layout="wide")
 
 
@@ -195,6 +206,10 @@ def translate_state(code: str) -> str:
 
 def translate_category(raw: str) -> str:
     return CATEGORY_LABELS.get(raw, raw.replace("_", " ").capitalize())
+
+
+def translate_motif(raw: str) -> str:
+    return MOTIF_LABELS.get(raw, raw)
 
 
 def is_local_mode() -> bool:
@@ -235,6 +250,15 @@ def _connect() -> duckdb.DuckDBPyConnection:
     # — resynthétisé ici pour garder `where dr.driver_rank = 1` valide dans les deux
     # modes, sans dupliquer une colonne constante dans le fichier exporté.
     _view("main.order_risk_drivers", "order_risk_drivers", select="*, 1 as driver_rank")
+
+    # main.review_insights (module NLP, src/nlp/build_review_insights.py) : vue créée
+    # SEULEMENT si l'export existe déjà -- `create view ... from read_parquet(path)`
+    # valide le fichier IMMÉDIATEMENT (vérifié empiriquement, pas supposé) et lèverait
+    # une IOException dès l'ouverture de connexion pour TOUTE requête de l'app, pas
+    # seulement la section motifs, si l'export n'a encore jamais été généré.
+    review_insights_path = EXPORT_DIR / "review_insights.parquet"
+    if review_insights_path.exists():
+        _view("main.review_insights", "review_insights")
     return con
 
 
@@ -421,7 +445,18 @@ def _horizontal_bar(
     qui ne permet pas de contrôler `sort` directement.
 
     Le volume (n) est en tooltip, jamais dans le libellé de l'axe — évite les
-    libellés tronqués ("Mato Grosso do S…") signalés sur la version précédente.
+    libellés tronqués ("Mato Grosso do S…") signalés sur la version précédente. Ce
+    contournement suffisait tant que les libellés restaient courts, mais "Livraison
+    incomplète" / "Produit endommagé" seuls (sans rien ajouté) dépassent quand même le
+    labelLimit PAR DÉFAUT de Vega-Lite (180px) et se retrouvent tronqués avec "…" —
+    signalé à nouveau sur la section motifs. `labelLimit` relevé à 260px pour ça.
+
+    Deuxième symptôme trouvé en vérifiant le rendu réel (pas supposé) : avec
+    seulement 4 catégories (section motifs), Vega masquait carrément 2 des 4
+    libellés (pas de troncature, un vide total) -- `labelOverlap` par défaut retire
+    des libellés qu'il estime en collision, un faux positif ici vu le nombre de
+    lignes. `labelOverlap=False` force l'affichage inconditionnel de CHAQUE libellé
+    fourni, peu importe l'heuristique de collision de Vega.
     """
     if df.empty:
         return
@@ -431,7 +466,10 @@ def _horizontal_bar(
         .mark_bar(color=color)
         .encode(
             x=alt.X(f"{value_col}:Q", title=None, axis=alt.Axis(format=value_format)),
-            y=alt.Y(f"{category_col}:N", sort=order, title=None),
+            y=alt.Y(
+                f"{category_col}:N", sort=order, title=None,
+                axis=alt.Axis(labelLimit=260, labelOverlap=False),
+            ),
             tooltip=tooltip,
         )
         .properties(height=26 * len(df) + 10)
@@ -539,6 +577,42 @@ def render_satisfaction_link(cte, params) -> None:
         f"{a_temps:.2f}/5 pour une commande livrée à l'heure — soit {delta:.2f} "
         f"point(s) de satisfaction en moins.**"
     )
+
+
+def render_review_insights(cte, params) -> None:
+    """
+    Section BI issue du module NLP (src/nlp/build_review_insights.py), pas du
+    pipeline prédictif : main.review_insights n'entre jamais dans is_late (cf. rapport
+    Limites/anti-fuite du module). Table absente (module NLP jamais lancé, export
+    Parquet jamais généré) -> message discret, jamais une exception qui casse
+    l'onglet : capturé au niveau le plus large (duckdb.Error) car les deux modes
+    échouent différemment (CatalogException en local si la table n'existe pas, la vue
+    elle-même n'existe simplement pas en Parquet si l'export est absent).
+    """
+    st.subheader("Motifs d'insatisfaction (avis clients négatifs)")
+    st.caption(
+        "Répartition calculée uniquement sur les avis négatifs (note <= 2) contenant "
+        "du texte ; les motifs sont détectés automatiquement (règles + classifieur "
+        "de texte)."
+    )
+    try:
+        df = run_query(cte + """
+            select ri.motif, count(*) as n
+            from base b
+            join main.review_insights ri using (order_id)
+            where ri.sentiment = 'negatif' and ri.motif not in ('non_applicable', 'autre')
+            group by 1
+        """, params)
+    except duckdb.Error:
+        st.caption("Analyse des motifs non disponible.")
+        return
+    if df.empty:
+        st.info("Aucun avis négatif catégorisé pour ces filtres.")
+        return
+    df["Motif"] = df["motif"].map(translate_motif)
+    df["Avis"] = df["n"]
+    df = df.sort_values("Avis", ascending=False)
+    _horizontal_bar(df, "Motif", "Avis", ",.0f", COLOR_SEQUENTIAL, ["Motif", "Avis"])
 
 
 # ---------------------------------------------------------------------------
@@ -710,6 +784,7 @@ def main() -> None:
         render_region_analysis(bi_cte, bi_params)
         render_category_analysis(bi_cte, bi_params)
         render_satisfaction_link(bi_cte, bi_params)
+        render_review_insights(bi_cte, bi_params)
 
     with tab_prediction:
         pred_cte, pred_params = build_pred_cte(states_sel, categories_sel, ym_min, ym_max)
