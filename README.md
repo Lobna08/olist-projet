@@ -161,9 +161,7 @@ exécutable, pas seulement une bonne intention documentée.
 | LightGBM + SHAP | Diagnostic d'explicabilité (pas le modèle de production) | Lit les interactions non-linéaires qu'un modèle linéaire ne peut pas capter |
 | Streamlit | Dashboard | Le plus rapide à mettre en production pour un usage interne/démo |
 
-**Anti-sur-ingénierie assumé** : pas de Spark, pas d'Airflow, pas de Docker lourd sur
-~96 000 lignes et une source unique — ce serait du mauvais dimensionnement, pas un
-signe de maturité technique.
+
 
 ## Comment lancer le projet
 
